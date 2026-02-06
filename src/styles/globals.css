@@ -97,6 +97,10 @@
   background: var(--theme-selection);
 }
 
+html {
+  background: transparent;
+}
+
 body {
   margin: 0;
   background: transparent;
