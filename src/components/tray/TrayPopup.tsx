@@ -207,7 +207,7 @@ export function TrayPopup() {
             )}
 
             {/* Content area with scroll */}
-            <div className="flex-1 overflow-y-auto px-4 py-3">
+            <div className="flex-1 overflow-y-auto px-4 py-3 rounded-b-xl">
               {!activeProfile ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4">
                   <div className="flex flex-col items-center gap-1">

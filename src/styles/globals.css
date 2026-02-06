@@ -125,4 +125,5 @@ body {
 
 #root {
   height: 100vh;
+  clip-path: inset(0 round 12px);
 }
