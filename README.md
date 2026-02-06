@@ -1,6 +1,6 @@
 # cldbar
 
-Windows system tray app for monitoring AI coding tool usage. Tracks token consumption, active sessions, and daily trends for Claude, Gemini, and z.ai.
+Windows system tray app for monitoring AI coding tool usage. Tracks token consumption, active sessions, and daily trends for Claude and Gemini.
 
 [한국어](README.ko.md)
 
