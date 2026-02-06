@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, Plus, Trash2, Sun, Moon, Monitor } from "lucide-react";
+import { startManualDrag } from "../../lib/windowState";
 import { providerColors, providerLabels } from "../../lib/colors";
+import { ProviderIcon } from "./ProviderIcon";
 import { applyTheme } from "../../lib/theme";
 import { useSettings } from "../../hooks/useProviderData";
 import type { Profile, ProviderType, SourceType } from "../../lib/types";
@@ -24,7 +26,10 @@ export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+      <div
+        className="flex items-center gap-2 px-4 py-2.5 border-b border-border cursor-grab active:cursor-grabbing"
+        onMouseDown={startManualDrag}
+      >
         <button
           onClick={onBack}
           className="p-1.5 rounded-md hover:bg-card-hover transition-colors"
@@ -98,16 +103,8 @@ export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile 
                   className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-card border border-border group"
                 >
                   {/* Provider icon */}
-                  <div
-                    className="flex items-center justify-center rounded-full font-bold text-[10px] shrink-0"
-                    style={{
-                      width: 24,
-                      height: 24,
-                      backgroundColor: `${colors?.main}20`,
-                      color: colors?.main,
-                    }}
-                  >
-                    {providerLabels[profile.providerType as ProviderType]?.[0] || "?"}
+                  <div className="shrink-0">
+                    <ProviderIcon type={profile.providerType as ProviderType} size={22} />
                   </div>
 
                   {/* Info */}

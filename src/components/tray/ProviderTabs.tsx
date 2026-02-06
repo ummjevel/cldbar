@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import { motion } from "framer-motion";
-import { providerColors, providerLabels } from "../../lib/colors";
+import { providerColors } from "../../lib/colors";
+import { ProviderIcon } from "./ProviderIcon";
 import type { Profile, ProviderType, SourceType } from "../../lib/types";
 
 function SourceBadge({ sourceType }: { sourceType: SourceType }) {
@@ -8,24 +10,12 @@ function SourceBadge({ sourceType }: { sourceType: SourceType }) {
     <span
       className="text-[8px] font-semibold uppercase leading-none px-1 py-0.5 rounded"
       style={{
-        backgroundColor: isApi ? "rgba(59,130,246,0.15)" : "rgba(139,139,158,0.15)",
-        color: isApi ? "#3b82f6" : "#8b8b9e",
+        backgroundColor: "rgba(139,139,158,0.15)",
+        color: "#8b8b9e",
       }}
     >
       {isApi ? "API" : "Account"}
     </span>
-  );
-}
-
-function ProviderIcon({ type, size = 18 }: { type: ProviderType; size?: number }) {
-  const color = providerColors[type]?.main || "#888";
-  return (
-    <div
-      className="flex items-center justify-center rounded-full font-bold text-[10px]"
-      style={{ width: size, height: size, backgroundColor: `${color}20`, color }}
-    >
-      {providerLabels[type]?.[0] || "?"}
-    </div>
   );
 }
 
@@ -36,6 +26,8 @@ interface Props {
 }
 
 export function ProviderTabs({ profiles, activeProfileId, onSelect }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   if (profiles.length === 0) {
     return (
       <div className="px-4 py-3 text-center text-muted text-xs">
@@ -45,7 +37,20 @@ export function ProviderTabs({ profiles, activeProfileId, onSelect }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-1 px-4 py-2 border-b border-border overflow-x-auto">
+    <div
+      ref={scrollRef}
+      className="flex items-center gap-1 px-4 py-2 border-b border-border overflow-x-auto shrink-0"
+      onWheel={(e) => {
+        if (scrollRef.current) {
+          const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+          if (delta !== 0) {
+            e.preventDefault();
+            scrollRef.current.scrollLeft += delta * 3;
+          }
+        }
+      }}
+    >
+      <span className="text-[9px] text-muted tabular-nums shrink-0 mr-1">{profiles.length}</span>
       {profiles.map((profile) => {
         const isActive = profile.id === activeProfileId;
         const colors = providerColors[profile.providerType as ProviderType];
@@ -61,7 +66,7 @@ export function ProviderTabs({ profiles, activeProfileId, onSelect }: Props) {
           >
             <ProviderIcon type={profile.providerType as ProviderType} size={16} />
             <span>{profile.name}</span>
-            <SourceBadge sourceType={(profile.sourceType || "account") as SourceType} />
+            {/* <SourceBadge sourceType={(profile.sourceType || "account") as SourceType} /> */}
             {isActive && (
               <motion.div
                 layoutId="activeTab"

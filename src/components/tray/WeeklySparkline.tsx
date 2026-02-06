@@ -1,4 +1,5 @@
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { TrendingUp } from "lucide-react";
 import { formatTokens } from "../../lib/format";
 import { providerColors } from "../../lib/colors";
 import type { DailyUsage, ProviderType } from "../../lib/types";
@@ -19,17 +20,17 @@ export function WeeklySparkline({ data, providerType }: Props) {
   }));
 
   return (
-    <div className="pt-1">
+    <div>
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs font-medium text-text-secondary">7-Day Trend</span>
         <span className="text-[10px] text-muted tabular-nums">
           {formatTokens(avg)} avg/day
         </span>
       </div>
-      <div className="h-12 rounded-lg overflow-hidden">
+      <div className="h-12 rounded-lg">
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 6, left: 6, bottom: 6 }}>
               <defs>
                 <linearGradient id={`gradient-${providerType}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={colors.main} stopOpacity={0.3} />
@@ -48,8 +49,9 @@ export function WeeklySparkline({ data, providerType }: Props) {
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-full flex items-center justify-center text-[10px] text-muted">
-            No data yet
+          <div className="h-full flex-1 flex items-center justify-center gap-2 px-3 rounded-lg bg-card border border-border border-dashed">
+            <TrendingUp size={12} className="text-muted opacity-40 shrink-0" />
+            <p className="text-[10px] text-muted">No usage data yet</p>
           </div>
         )}
       </div>

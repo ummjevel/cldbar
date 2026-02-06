@@ -15,8 +15,8 @@ export function UsageMeter({ used, providerType, loading }: Props) {
   const displayPercent = Math.min((used / 1_000_000) * 100, 100);
 
   return (
-    <div className="pt-2">
-      <div className="flex items-baseline justify-between mb-2">
+    <div>
+      <div className="flex items-baseline justify-between mb-1.5">
         <span className="text-xs font-medium text-text-secondary">Today's Usage</span>
         <span className="text-lg font-bold text-text tabular-nums">
           {loading ? "\u2014" : formatTokens(used)}

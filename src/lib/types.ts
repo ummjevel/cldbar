@@ -2,7 +2,10 @@ export type ProviderType = "claude" | "gemini" | "zai";
 export type SourceType = "account" | "api";
 
 /** Providers that support API source type */
-export const apiSupportedProviders: ProviderType[] = ["claude"];
+export const apiSupportedProviders: ProviderType[] = ["claude"];  // zai temporarily disabled
+
+/** Providers that support account (local folder) source type */
+export const accountSupportedProviders: ProviderType[] = ["claude", "gemini"];
 
 export interface Profile {
   id: string;
@@ -51,6 +54,19 @@ export interface DailyUsage {
   outputTokens: number;
   sessions: number;
   messages: number;
+}
+
+export interface RateLimitWindow {
+  label: string;
+  utilization: number;
+  resetsAt: string | null;
+}
+
+export interface RateLimitStatus {
+  available: boolean;
+  fiveHour: RateLimitWindow | null;
+  sevenDay: RateLimitWindow | null;
+  sevenDayOpus: RateLimitWindow | null;
 }
 
 export interface AppSettings {

@@ -15,7 +15,7 @@
         "label": "main",
         "title": "cldbar",
         "width": 380,
-        "height": 540,
+        "height": 490,
         "visible": false,
         "decorations": false,
         "alwaysOnTop": true,
@@ -29,9 +29,9 @@
     },
     "trayIcon": {
       "id": "main",
-      "iconPath": "icons/icon.png",
+      "iconPath": "icons/32x32.png",
       "iconAsTemplate": false,
-      "tooltip": "cldbar - AI Coding Monitor"
+      "tooltip": "cldbar - AI usage monitor"
     }
   },
   "bundle": {

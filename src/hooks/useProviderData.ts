@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { Profile, UsageStats, Session, DailyUsage, AppSettings } from "../lib/types";
+import type { Profile, UsageStats, Session, DailyUsage, RateLimitStatus, AppSettings } from "../lib/types";
 
 export function useProfiles() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -74,6 +74,24 @@ export function useDailyUsage(profileId: string | null, days: number = 7) {
 
   useEffect(() => { setData([]); refresh(); }, [refresh]);
   return { data, refresh };
+}
+
+export function useRateLimitStatus(profileId: string | null) {
+  const [status, setStatus] = useState<RateLimitStatus | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!profileId) { setStatus(null); return; }
+    try {
+      const result = await invoke<RateLimitStatus>("get_rate_limit_status", { profileId });
+      setStatus(result);
+    } catch (e) {
+      console.error("Failed to get rate limit status:", e);
+      setStatus(null);
+    }
+  }, [profileId]);
+
+  useEffect(() => { setStatus(null); refresh(); }, [refresh]);
+  return { status, refresh };
 }
 
 export function useAllUsageStats() {

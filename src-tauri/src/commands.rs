@@ -3,7 +3,8 @@ use crate::providers::claude::ClaudeProvider;
 use crate::providers::claude_api::ClaudeApiProvider;
 use crate::providers::gemini::GeminiProvider;
 use crate::providers::zai::ZaiProvider;
-use crate::providers::{DailyUsage, Provider, Session, UsageStats};
+use crate::providers::zai_api::ZaiApiProvider;
+use crate::providers::{DailyUsage, Provider, RateLimitStatus, Session, UsageStats};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -74,6 +75,11 @@ pub fn add_profile(state: State<AppState>, profile: Profile) -> Result<(), Strin
         }
         ("claude", _) => Box::new(ClaudeProvider::new(profile.config_dir.clone().into())),
         ("gemini", _) => Box::new(GeminiProvider::new(profile.config_dir.clone().into())),
+        ("zai", "api") => {
+            let key = profile.api_key.as_ref()
+                .ok_or_else(|| "API key is required for z.ai API source type".to_string())?;
+            Box::new(ZaiApiProvider::new(key.clone()))
+        }
         ("zai", _) => Box::new(ZaiProvider::new(profile.config_dir.clone().into())),
         (other, _) => return Err(format!("Unknown provider type: {}", other)),
     };
@@ -232,30 +238,84 @@ pub fn get_all_usage_stats(state: State<AppState>) -> Result<Vec<UsageStats>, St
 }
 
 #[tauri::command]
-pub fn validate_api_key(api_key: String) -> Result<bool, String> {
-    // Try a lightweight API call to check if the key is valid.
-    // We request a minimal usage report (1 day, limit 1).
+pub fn get_rate_limit_status(state: State<AppState>, profile_id: String) -> Result<RateLimitStatus, String> {
+    let config = state
+        .config
+        .lock()
+        .map_err(|e| format!("Failed to lock config: {}", e))?;
+
+    let profile = config
+        .profiles
+        .iter()
+        .find(|p| p.id == profile_id)
+        .ok_or_else(|| format!("Profile not found: {}", profile_id))?;
+
+    let unavailable = RateLimitStatus {
+        available: false,
+        five_hour: None,
+        seven_day: None,
+        seven_day_opus: None,
+    };
+
+    match (profile.provider_type.as_str(), profile.source_type.as_str()) {
+        ("claude", "account") | ("claude", "") => {
+            let provider = ClaudeProvider::new(profile.config_dir.clone().into());
+            Ok(provider.get_rate_limit_status())
+        }
+        ("zai", "api") => {
+            let key = match &profile.api_key {
+                Some(k) => k.clone(),
+                None => return Ok(unavailable),
+            };
+            let provider = ZaiApiProvider::new(key);
+            Ok(provider.get_rate_limit_status())
+        }
+        _ => Ok(unavailable),
+    }
+}
+
+#[tauri::command]
+pub fn validate_api_key(api_key: String, provider_type: Option<String>) -> Result<bool, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let now = chrono::Utc::now();
-    let start = now - chrono::Duration::days(1);
-    let starting_at = start.format("%Y-%m-%dT00:00:00Z").to_string();
-    let ending_at = now.format("%Y-%m-%dT23:59:59Z").to_string();
+    let provider = provider_type.unwrap_or_else(|| "claude".to_string());
 
-    let resp = client
-        .get("https://api.anthropic.com/v1/organizations/usage_report/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .query(&[
-            ("starting_at", starting_at.as_str()),
-            ("ending_at", ending_at.as_str()),
-            ("limit", "1"),
-        ])
-        .send()
-        .map_err(|e| format!("API validation request failed: {}", e))?;
+    match provider.as_str() {
+        "zai" => {
+            // Validate z.ai key by calling the quota endpoint
+            let resp = client
+                .get("https://api.z.ai/api/monitor/usage/quota/limit")
+                .header("Authorization", &api_key)
+                .header("Accept-Language", "en-US,en")
+                .header("Content-Type", "application/json")
+                .send()
+                .map_err(|e| format!("API validation request failed: {}", e))?;
 
-    Ok(resp.status().is_success())
+            Ok(resp.status().is_success())
+        }
+        _ => {
+            // Claude Admin API key validation
+            let now = chrono::Utc::now();
+            let start = now - chrono::Duration::days(1);
+            let starting_at = start.format("%Y-%m-%dT00:00:00Z").to_string();
+            let ending_at = now.format("%Y-%m-%dT23:59:59Z").to_string();
+
+            let resp = client
+                .get("https://api.anthropic.com/v1/organizations/usage_report/messages")
+                .header("x-api-key", &api_key)
+                .header("anthropic-version", "2023-06-01")
+                .query(&[
+                    ("starting_at", starting_at.as_str()),
+                    ("ending_at", ending_at.as_str()),
+                    ("limit", "1"),
+                ])
+                .send()
+                .map_err(|e| format!("API validation request failed: {}", e))?;
+
+            Ok(resp.status().is_success())
+        }
+    }
 }

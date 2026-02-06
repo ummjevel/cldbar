@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, Check, Loader2, AlertCircle, FolderOpen } from "lucide-react";
+import { ArrowLeft, Check, Loader2, AlertCircle, FolderOpen, Info } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { providerColors } from "../../lib/colors";
-import { apiSupportedProviders, type ProviderType, type SourceType } from "../../lib/types";
+import { setDialogOpen, startManualDrag } from "../../lib/windowState";
+import { apiSupportedProviders, accountSupportedProviders, type ProviderType, type SourceType } from "../../lib/types";
 
 interface Props {
   onBack: () => void;
@@ -13,7 +14,7 @@ interface Props {
 const providers: { type: ProviderType; label: string }[] = [
   { type: "claude", label: "Claude" },
   { type: "gemini", label: "Gemini" },
-  { type: "zai", label: "z.ai" },
+  // { type: "zai", label: "z.ai" },  // TODO: re-enable when z.ai API is stable
 ];
 
 export function AddProfileForm({ onBack, onAdded }: Props) {
@@ -28,13 +29,18 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const supportsApi = apiSupportedProviders.includes(providerType);
+  const supportsAccount = accountSupportedProviders.includes(providerType);
   const isApi = sourceType === "api";
 
-  // Reset source type if switching to a provider that doesn't support API
+  // Auto-select appropriate source type when switching providers
   const handleProviderChange = (type: ProviderType) => {
     setProviderType(type);
-    if (!apiSupportedProviders.includes(type) && sourceType === "api") {
+    const canApi = apiSupportedProviders.includes(type);
+    const canAccount = accountSupportedProviders.includes(type);
+    if (!canApi && sourceType === "api") {
       setSourceType("account");
+    } else if (!canAccount && sourceType === "account") {
+      setSourceType("api");
     }
     setValidated(null);
     setError(null);
@@ -46,7 +52,7 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
     setValidated(null);
     setError(null);
     try {
-      const valid = await invoke<boolean>("validate_api_key", { apiKey: apiKey.trim() });
+      const valid = await invoke<boolean>("validate_api_key", { apiKey: apiKey.trim(), providerType });
       setValidated(valid);
       if (!valid) setError("Invalid API key or insufficient permissions");
     } catch (e) {
@@ -99,7 +105,10 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+      <div
+        className="flex items-center gap-2 px-4 py-2.5 border-b border-border cursor-grab active:cursor-grabbing"
+        onMouseDown={startManualDrag}
+      >
         <button
           onClick={onBack}
           className="p-1.5 rounded-md hover:bg-card-hover transition-colors"
@@ -127,7 +136,7 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
                   className="flex-1 px-2 py-2 rounded-lg text-xs font-medium border transition-all"
                   style={{
                     borderColor: active ? colors.main : "var(--color-border)",
-                    backgroundColor: active ? `${colors.main}15` : "var(--color-card)",
+                    backgroundColor: active ? colors.bg : "var(--color-card)",
                     color: active ? colors.main : "var(--color-muted)",
                   }}
                 >
@@ -138,38 +147,29 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
           </div>
         </div>
 
-        {/* Source type toggle */}
+        {/* Source type toggle - temporarily hidden, only account mode supported
         <div>
           <label className="text-[10px] font-medium text-muted uppercase tracking-wider mb-1.5 block">
             Source
           </label>
           <div className="flex gap-1.5">
             <button
-              onClick={() => { setSourceType("account"); setError(null); }}
+              onClick={() => { if (supportsAccount) { setSourceType("account"); setError(null); } }}
+              disabled={!supportsAccount}
               className="flex-1 px-2 py-2 rounded-lg text-xs font-medium border transition-all"
-              style={{
-                borderColor: !isApi ? "var(--color-text-secondary)" : "var(--color-border)",
-                backgroundColor: !isApi ? "rgba(152,152,168,0.1)" : "var(--color-card)",
-                color: !isApi ? "var(--color-text)" : "var(--color-muted)",
-              }}
             >
-              Account
+              Account{!supportsAccount && " (N/A)"}
             </button>
             <button
               onClick={() => { if (supportsApi) { setSourceType("api"); setError(null); } }}
               disabled={!supportsApi}
               className="flex-1 px-2 py-2 rounded-lg text-xs font-medium border transition-all"
-              style={{
-                borderColor: isApi ? "#3b82f6" : "var(--color-border)",
-                backgroundColor: isApi ? "rgba(59,130,246,0.1)" : "var(--color-card)",
-                color: !supportsApi ? "var(--color-border-light)" : isApi ? "#3b82f6" : "var(--color-muted)",
-                cursor: supportsApi ? "pointer" : "not-allowed",
-              }}
             >
               API{!supportsApi && " (N/A)"}
             </button>
           </div>
         </div>
+        */}
 
         {/* Name (optional) */}
         <div>
@@ -190,14 +190,14 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
         {isApi && (
           <div>
             <label className="text-[10px] font-medium text-muted uppercase tracking-wider mb-1.5 block">
-              Admin API Key
+              API Key
             </label>
             <div className="flex gap-1.5">
               <input
                 type="password"
                 value={apiKey}
                 onChange={(e) => { setApiKey(e.target.value); setValidated(null); }}
-                placeholder="sk-ant-admin..."
+                placeholder={providerType === "zai" ? "your-api-key..." : "sk-ant-admin..."}
                 className="flex-1 px-3 py-2 rounded-lg border border-border text-xs text-text placeholder:text-muted/50 outline-none focus:border-border-light transition-colors font-mono"
                 style={{ backgroundColor: "var(--theme-input-bg)" }}
               />
@@ -221,7 +221,9 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
               </button>
             </div>
             <p className="text-[10px] text-muted mt-1">
-              Requires an Admin API key from console.anthropic.com
+              {providerType === "zai"
+                ? "API key from z.ai/manage-apikey"
+                : "Requires an Admin API key from console.anthropic.com"}
             </p>
           </div>
         )}
@@ -247,14 +249,30 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
               />
               <button
                 onClick={async () => {
-                  const selected = await open({ directory: true, title: "Select config directory" });
-                  if (selected) setConfigDir(selected as string);
+                  setDialogOpen(true);
+                  try {
+                    const selected = await open({ directory: true, title: "Select config directory" });
+                    if (selected) setConfigDir(selected as string);
+                  } finally {
+                    setDialogOpen(false);
+                  }
                 }}
                 className="px-3 py-2 rounded-lg text-xs font-medium border border-border bg-card hover:bg-card-hover transition-colors"
               >
                 <FolderOpen size={12} className="text-muted" />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Gemini notice */}
+        {providerType === "gemini" && (
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-card border border-border">
+            <Info size={11} className="text-muted shrink-0 mt-0.5" />
+            <p className="text-[10px] text-muted leading-relaxed">
+              Only tracks local Gemini CLI usage. For full usage details, visit{" "}
+              <span className="text-text-secondary">aistudio.google.com</span>.
+            </p>
           </div>
         )}
 

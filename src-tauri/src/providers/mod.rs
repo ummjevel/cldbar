@@ -49,6 +49,23 @@ pub struct DailyUsage {
     pub messages: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RateLimitStatus {
+    pub available: bool,
+    pub five_hour: Option<RateLimitWindow>,
+    pub seven_day: Option<RateLimitWindow>,
+    pub seven_day_opus: Option<RateLimitWindow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RateLimitWindow {
+    pub label: String,
+    pub utilization: f64,
+    pub resets_at: Option<String>,
+}
+
 pub trait Provider: Send + Sync {
     fn name(&self) -> &str;
     fn provider_type(&self) -> &str;
@@ -63,3 +80,4 @@ pub mod claude;
 pub mod claude_api;
 pub mod gemini;
 pub mod zai;
+pub mod zai_api;

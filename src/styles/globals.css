@@ -15,21 +15,41 @@
   --theme-scrollbar: rgba(255, 255, 255, 0.1);
   --theme-selection: rgba(217, 119, 6, 0.3);
   --theme-input-bg: rgba(0, 0, 0, 0.2);
+
+  --provider-claude: #d97706;
+  --provider-claude-light: #f59e0b;
+  --provider-claude-bg: rgba(217, 119, 6, 0.1);
+  --provider-gemini: #4285f4;
+  --provider-gemini-light: #60a5fa;
+  --provider-gemini-bg: rgba(66, 133, 244, 0.1);
+  --provider-zai: #10b981;
+  --provider-zai-light: #34d399;
+  --provider-zai-bg: rgba(16, 185, 129, 0.1);
 }
 
 [data-theme="light"] {
-  --theme-bg: rgba(248, 248, 252, 0.72);
-  --theme-card: rgba(255, 255, 255, 0.5);
-  --theme-card-hover: rgba(255, 255, 255, 0.65);
-  --theme-border: rgba(0, 0, 0, 0.06);
-  --theme-border-light: rgba(0, 0, 0, 0.1);
-  --theme-text: #1a1a2e;
-  --theme-text-secondary: #4a4a5e;
-  --theme-muted: #8b8b9e;
-  --theme-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.6);
+  --theme-bg: rgba(243, 243, 250, 0.82);
+  --theme-card: rgba(255, 255, 255, 0.75);
+  --theme-card-hover: rgba(255, 255, 255, 0.85);
+  --theme-border: rgba(0, 0, 0, 0.1);
+  --theme-border-light: rgba(0, 0, 0, 0.15);
+  --theme-text: #111122;
+  --theme-text-secondary: #3a3a50;
+  --theme-muted: #5a5a70;
+  --theme-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.6);
   --theme-scrollbar: rgba(0, 0, 0, 0.1);
-  --theme-selection: rgba(217, 119, 6, 0.2);
+  --theme-selection: rgba(146, 64, 14, 0.2);
   --theme-input-bg: rgba(255, 255, 255, 0.6);
+
+  --provider-claude: #92400e;
+  --provider-claude-light: #b45309;
+  --provider-claude-bg: rgba(146, 64, 14, 0.1);
+  --provider-gemini: #1d4ed8;
+  --provider-gemini-light: #2563eb;
+  --provider-gemini-bg: rgba(29, 78, 216, 0.08);
+  --provider-zai: #047857;
+  --provider-zai-light: #059669;
+  --provider-zai-bg: rgba(4, 120, 87, 0.08);
 }
 
 @theme {
@@ -85,6 +105,18 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
+}
+
+/* Thin horizontal scrollbar for tabs */
+.overflow-x-auto::-webkit-scrollbar {
+  height: 3px;
+}
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar);
+  border-radius: 3px;
 }
 
 #root {

@@ -12,8 +12,10 @@ export function formatCost(usd: number): string {
 }
 
 export function formatTimeAgo(isoDate: string): string {
+  if (!isoDate) return "unknown";
   const now = Date.now();
   const then = new Date(isoDate).getTime();
+  if (isNaN(then)) return "unknown";
   const diff = now - then;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";

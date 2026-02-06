@@ -1,4 +1,4 @@
-use super::{DailyUsage, ModelUsage, Provider, Session, UsageStats};
+use super::{DailyUsage, ModelUsage, Provider, RateLimitStatus, RateLimitWindow, Session, UsageStats};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -97,9 +97,92 @@ struct SessionUsage {
     cache_read_input_tokens: u64,
 }
 
+// --- Deserialization types for OAuth usage API ---
+
+#[derive(Debug, Deserialize)]
+struct OAuthCredentials {
+    #[serde(default, rename = "accessToken")]
+    access_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthUsageResponse {
+    five_hour: Option<OAuthUsageWindow>,
+    seven_day: Option<OAuthUsageWindow>,
+    seven_day_opus: Option<OAuthUsageWindow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthUsageWindow {
+    utilization: f64,
+    resets_at: Option<String>,
+}
+
 impl ClaudeProvider {
     pub fn new(config_dir: PathBuf) -> Self {
         Self { config_dir }
+    }
+
+    /// Read OAuth access token from .credentials.json
+    fn read_oauth_token(&self) -> Option<String> {
+        let creds_path = self.config_dir.join(".credentials.json");
+        let data = fs::read_to_string(&creds_path).ok()?;
+        let creds: OAuthCredentials = serde_json::from_str(&data).ok()?;
+        creds.access_token
+    }
+
+    /// Fetch rate limit utilization from Claude OAuth usage API.
+    pub fn get_rate_limit_status(&self) -> RateLimitStatus {
+        let unavailable = RateLimitStatus {
+            available: false,
+            five_hour: None,
+            seven_day: None,
+            seven_day_opus: None,
+        };
+
+        let token = match self.read_oauth_token() {
+            Some(t) => t,
+            None => return unavailable,
+        };
+
+        let client = match reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+        {
+            Ok(c) => c,
+            Err(_) => return unavailable,
+        };
+
+        let resp = client
+            .get("https://api.anthropic.com/api/oauth/usage")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("anthropic-beta", "oauth-2025-04-20")
+            .send();
+
+        match resp {
+            Ok(r) if r.status().is_success() => match r.json::<OAuthUsageResponse>() {
+                Ok(usage) => RateLimitStatus {
+                    available: true,
+                    five_hour: usage.five_hour.map(|w| RateLimitWindow {
+                        label: "5-Hour".to_string(),
+                        utilization: w.utilization,
+                        resets_at: w.resets_at,
+                    }),
+                    seven_day: usage.seven_day.map(|w| RateLimitWindow {
+                        label: "7-Day".to_string(),
+                        utilization: w.utilization,
+                        resets_at: w.resets_at,
+                    }),
+                    seven_day_opus: usage.seven_day_opus.map(|w| RateLimitWindow {
+                        label: "7-Day Opus".to_string(),
+                        utilization: w.utilization,
+                        resets_at: w.resets_at,
+                    }),
+                },
+                Err(_) => unavailable,
+            },
+            _ => unavailable,
+        }
     }
 
     fn read_stats_cache(&self) -> Option<StatsCache> {

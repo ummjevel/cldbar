@@ -1,9 +1,9 @@
 import { ProviderType } from "./types";
 
 export const providerColors: Record<ProviderType, { main: string; light: string; bg: string }> = {
-  claude: { main: "#d97706", light: "#f59e0b", bg: "rgba(217, 119, 6, 0.1)" },
-  gemini: { main: "#4285f4", light: "#60a5fa", bg: "rgba(66, 133, 244, 0.1)" },
-  zai: { main: "#10b981", light: "#34d399", bg: "rgba(16, 185, 129, 0.1)" },
+  claude: { main: "var(--provider-claude)", light: "var(--provider-claude-light)", bg: "var(--provider-claude-bg)" },
+  gemini: { main: "var(--provider-gemini)", light: "var(--provider-gemini-light)", bg: "var(--provider-gemini-bg)" },
+  zai: { main: "var(--provider-zai)", light: "var(--provider-zai-light)", bg: "var(--provider-zai-bg)" },
 };
 
 export const providerLabels: Record<ProviderType, string> = {

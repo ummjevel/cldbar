@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Circle } from "lucide-react";
+import { Circle, MonitorOff } from "lucide-react";
 import { formatTokens, formatTimeAgo } from "../../lib/format";
 import type { Session, SourceType } from "../../lib/types";
 
@@ -9,30 +9,27 @@ interface Props {
 }
 
 export function ActiveSessions({ sessions, sourceType }: Props) {
-  if (sourceType === "api") {
-    return (
-      <div className="py-4 text-center">
-        <p className="text-xs text-muted">Session tracking not available via API</p>
-      </div>
-    );
-  }
-
-  if (sessions.length === 0) {
-    return (
-      <div className="py-4 text-center">
-        <p className="text-xs text-muted">No active sessions</p>
-      </div>
-    );
-  }
+  const isEmpty = sourceType === "api" || sessions.length === 0;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs font-medium text-text-secondary">Active Sessions</span>
-        <span className="text-[10px] text-muted tabular-nums">{sessions.length}</span>
+        {!isEmpty && (
+          <span className="text-[10px] text-muted tabular-nums">{sessions.length}</span>
+        )}
       </div>
-      <div className="space-y-1">
-        {sessions.slice(0, 4).map((session, i) => (
+
+      {isEmpty ? (
+        <div className="flex-1 flex items-center justify-center gap-2 px-3 h-12 rounded-lg bg-card border border-border border-dashed">
+          <MonitorOff size={12} className="text-muted opacity-40 shrink-0" />
+          <p className="text-[10px] text-muted">
+            {sourceType === "api" ? "Not available via API" : "No active sessions"}
+          </p>
+        </div>
+      ) : (
+      <div className={`space-y-1 overflow-y-auto ${sessions.length === 2 ? 'max-h-[76px]' : 'max-h-[150px]'}`}>
+        {sessions.map((session, i) => (
           <motion.div
             key={session.id}
             initial={{ opacity: 0, x: -8 }}
@@ -59,6 +56,7 @@ export function ActiveSessions({ sessions, sourceType }: Props) {
           </motion.div>
         ))}
       </div>
+      )}
     </div>
   );
 }

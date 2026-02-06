@@ -12,6 +12,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-set-position",
     "core:window:allow-set-size",
+    "core:window:allow-start-dragging",
     "core:tray:default",
     "opener:default",
     "dialog:default"

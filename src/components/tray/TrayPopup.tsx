@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { PhysicalSize } from "@tauri-apps/api/dpi";
 import { ProviderTabs } from "./ProviderTabs";
 import { UsageMeter } from "./UsageMeter";
 import { StatCards } from "./StatCards";
@@ -9,7 +11,9 @@ import { ActiveSessions } from "./ActiveSessions";
 import { WeeklySparkline } from "./WeeklySparkline";
 import { SettingsPanel } from "./SettingsPanel";
 import { AddProfileForm } from "./AddProfileForm";
-import { useProfiles, useUsageStats, useActiveSessions, useDailyUsage } from "../../hooks/useProviderData";
+import { RateLimits } from "./RateLimits";
+import { useProfiles, useUsageStats, useActiveSessions, useDailyUsage, useRateLimitStatus } from "../../hooks/useProviderData";
+import { isDialogOpen, isDragging, startManualDrag } from "../../lib/windowState";
 import type { ProviderType, SourceType } from "../../lib/types";
 
 type View = "main" | "settings" | "addProfile";
@@ -30,6 +34,49 @@ export function TrayPopup() {
   const { stats, loading, refresh: refreshStats } = useUsageStats(activeProfileId);
   const { sessions, refresh: refreshSessions } = useActiveSessions(activeProfileId);
   const { data: dailyUsage, refresh: refreshDaily } = useDailyUsage(activeProfileId, 7);
+  const { status: rateLimitStatus, refresh: refreshRateLimits } = useRateLimitStatus(activeProfileId);
+
+  // Hide window on blur (debounced to allow drag/dialog interactions)
+  useEffect(() => {
+    const win = getCurrentWindow();
+    let blurTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const unlistenBlur = win.listen("tauri://blur", () => {
+      if (!isDialogOpen() && !isDragging()) {
+        blurTimeout = setTimeout(() => win.hide(), 150);
+      }
+    });
+    const unlistenFocus = win.listen("tauri://focus", () => {
+      if (blurTimeout) { clearTimeout(blurTimeout); blurTimeout = null; }
+    });
+
+    return () => {
+      unlistenBlur.then(fn => fn());
+      unlistenFocus.then(fn => fn());
+      if (blurTimeout) clearTimeout(blurTimeout);
+    };
+  }, []);
+
+  // Dynamic window height based on session count (top-left stays fixed, only height changes)
+  useEffect(() => {
+    if (view !== "main") return;
+    const win = getCurrentWindow();
+    const count = sessions.length;
+    const targetH = count <= 1 ? 490 : count === 2 ? 520 : 565;
+    const scale = window.devicePixelRatio || 1;
+    const W = Math.round(380 * scale);
+    const H = Math.round(targetH * scale);
+
+    (async () => {
+      try {
+        const size = await win.outerSize();
+        if (Math.abs(size.height - H) <= 4) return;
+        await win.setSize(new PhysicalSize(W, H));
+      } catch (e) {
+        console.error("Window resize failed:", e);
+      }
+    })();
+  }, [sessions.length, view]);
 
   // Auto-refresh every 5 seconds (only on main view)
   useEffect(() => {
@@ -38,9 +85,10 @@ export function TrayPopup() {
       refreshStats();
       refreshSessions();
       refreshDaily();
+      refreshRateLimits();
     }, 5000);
     return () => clearInterval(interval);
-  }, [view, refreshStats, refreshSessions, refreshDaily]);
+  }, [view, refreshStats, refreshSessions, refreshDaily, refreshRateLimits]);
 
   const sourceType: SourceType = (activeProfile?.sourceType as SourceType) || "account";
   const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0;
@@ -115,10 +163,21 @@ export function TrayPopup() {
           >
             {/* Title bar - draggable */}
             <div
-              className="flex items-center justify-between px-4 py-2.5 border-b border-border"
-              data-tauri-drag-region
+              className="flex items-center justify-between px-4 py-2.5 border-b border-border cursor-grab active:cursor-grabbing"
+              onMouseDown={startManualDrag}
             >
-              <span className="text-sm font-semibold text-text tracking-wide">cldbar</span>
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 100 100">
+                  <circle fill="none" stroke="#1a1a1e" strokeWidth="20" cx="50" cy="50" r="40"/>
+                  <circle fill="none" stroke="#e87b35" strokeWidth="20" cx="50" cy="50" r="40"
+                    strokeDasharray="150 251.3" strokeDashoffset="0"
+                    transform="rotate(-90 50 50)" opacity="0.95"/>
+                  <circle fill="none" stroke="#4285f4" strokeWidth="20" cx="50" cy="50" r="40"
+                    strokeDasharray="93 251.3" strokeDashoffset="-155"
+                    transform="rotate(-90 50 50)" opacity="0.95"/>
+                </svg>
+                <span className="text-sm font-semibold text-text tracking-wide">cldbar</span>
+              </div>
               <div className="flex items-center gap-1.5">
                 <button
                   className="p-1.5 rounded-md hover:bg-card-hover transition-colors"
@@ -126,6 +185,7 @@ export function TrayPopup() {
                     refreshStats();
                     refreshSessions();
                     refreshDaily();
+                    refreshRateLimits();
                   }}
                 >
                   <RefreshCw size={13} className="text-muted" />
@@ -147,7 +207,7 @@ export function TrayPopup() {
             />
 
             {/* Content area with scroll */}
-            <div className="flex-1 overflow-y-auto px-4 pb-4">
+            <div className="flex-1 overflow-y-auto px-4 py-3">
               {!activeProfile ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 py-12">
                   <p className="text-xs text-muted">No profiles configured</p>
@@ -166,7 +226,7 @@ export function TrayPopup() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.2 }}
-                    className="space-y-3"
+                    className="flex flex-col gap-3 min-h-full"
                   >
                     {/* Usage meter */}
                     <UsageMeter
@@ -174,6 +234,9 @@ export function TrayPopup() {
                       providerType={(activeProfile.providerType as ProviderType) || "claude"}
                       loading={loading}
                     />
+
+                    {/* Rate limits (Claude account only) */}
+                    <RateLimits status={rateLimitStatus} />
 
                     {/* Stat cards */}
                     <StatCards
@@ -187,9 +250,10 @@ export function TrayPopup() {
 
                     {/* Weekly sparkline */}
                     <WeeklySparkline
-                      data={dailyUsage}
-                      providerType={(activeProfile.providerType as ProviderType) || "claude"}
-                    />
+                        data={dailyUsage}
+                        providerType={(activeProfile.providerType as ProviderType) || "claude"}
+                      />
+
                   </motion.div>
                 </AnimatePresence>
               )}
