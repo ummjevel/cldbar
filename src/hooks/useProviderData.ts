@@ -55,7 +55,7 @@ export function useActiveSessions(profileId: string | null) {
     }
   }, [profileId]);
 
-  useEffect(() => { setSessions([]); refresh(); }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh]);
   return { sessions, refresh };
 }
 

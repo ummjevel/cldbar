@@ -62,15 +62,13 @@ export function TrayPopup() {
     if (view !== "main") return;
     const win = getCurrentWindow();
     const count = sessions.length;
-    const targetH = count <= 1 ? 490 : count === 2 ? 520 : 565;
+    const targetH = count <= 1 ? 490 : count === 2 ? 530 : 600;
     const scale = window.devicePixelRatio || 1;
     const W = Math.round(380 * scale);
     const H = Math.round(targetH * scale);
 
     (async () => {
       try {
-        const size = await win.outerSize();
-        if (Math.abs(size.height - H) <= 4) return;
         await win.setSize(new PhysicalSize(W, H));
       } catch (e) {
         console.error("Window resize failed:", e);
