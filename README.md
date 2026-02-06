@@ -6,6 +6,9 @@ Windows system tray app for monitoring AI coding tool usage. Tracks token consum
 
 ![Tauri v2](https://img.shields.io/badge/Tauri-v2-blue) ![React 19](https://img.shields.io/badge/React-19-61dafb) ![Rust](https://img.shields.io/badge/Rust-2021-orange)
 
+[![cldbar demo](https://img.youtube.com/vi/1vVVtt5Iag0/maxresdefault.jpg)](https://youtu.be/1vVVtt5Iag0)
+
+
 ## Features
 
 - **Multi-provider support** — Claude Code, Gemini CLI, z.ai
