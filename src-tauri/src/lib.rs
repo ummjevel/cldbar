@@ -13,6 +13,7 @@ use providers::Provider;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
     Manager,
 };
@@ -71,8 +72,18 @@ pub fn run() {
             commands::get_rate_limit_status,
         ])
         .setup(|app| {
-            // Set up tray icon click handler.
+            // Set up tray icon with context menu and click handler.
             if let Some(tray) = app.tray_by_id("main") {
+                let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+                let menu = MenuBuilder::new(app).item(&quit_item).build()?;
+                tray.set_menu(Some(menu))?;
+
+                tray.on_menu_event(|app, event| {
+                    if event.id() == "quit" {
+                        app.exit(0);
+                    }
+                });
+
                 tray.on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -85,12 +96,12 @@ pub fn run() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
-                                // Position window near tray icon area.
-                                // On Windows, the system tray is at the bottom-right.
+                                // Position window so its bottom edge sits just above the tray icon.
                                 if let Ok(Some(rect)) = tray.rect() {
-                                    let pos: tauri::PhysicalPosition<i32> = rect.position.to_physical(1.0);
-                                    let x = pos.x - 190;
-                                    let y = pos.y - 500;
+                                    let tray_pos: tauri::PhysicalPosition<i32> = rect.position.to_physical(1.0);
+                                    let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize { width: 380, height: 490 });
+                                    let x = tray_pos.x - (win_size.width as i32 / 2);
+                                    let y = tray_pos.y - win_size.height as i32;
                                     let _ = window.set_position(tauri::Position::Physical(
                                         tauri::PhysicalPosition { x, y },
                                     ));

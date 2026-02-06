@@ -199,20 +199,28 @@ export function TrayPopup() {
               </div>
             </div>
 
-            {/* Provider tabs */}
-            <ProviderTabs
-              profiles={profiles}
-              activeProfileId={activeProfileId}
-              onSelect={setActiveProfileId}
-            />
+            {/* Provider tabs (hidden when no profiles) */}
+            {profiles.length > 0 && (
+              <ProviderTabs
+                profiles={profiles}
+                activeProfileId={activeProfileId}
+                onSelect={setActiveProfileId}
+              />
+            )}
 
             {/* Content area with scroll */}
             <div className="flex-1 overflow-y-auto px-4 py-3">
               {!activeProfile ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 py-12">
-                  <p className="text-xs text-muted">No profiles configured</p>
+                <div className="flex flex-col items-center justify-center h-full gap-4">
+                  <div className="flex flex-col items-center gap-1">
+                    <svg width="32" height="32" viewBox="0 0 100 100" className="opacity-30">
+                      <circle fill="none" stroke="currentColor" strokeWidth="16" cx="50" cy="50" r="40"/>
+                    </svg>
+                    <p className="text-xs text-muted mt-2">No profiles configured</p>
+                    <p className="text-[10px] text-muted/60">Add a provider to start tracking usage</p>
+                  </div>
                   <button
-                    onClick={() => setView("settings")}
+                    onClick={() => setView("addProfile")}
                     className="px-4 py-1.5 rounded-lg text-xs font-medium bg-card border border-border hover:border-border-light transition-colors text-text-secondary"
                   >
                     Add Profile
