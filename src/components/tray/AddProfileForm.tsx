@@ -28,8 +28,6 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supportsApi = apiSupportedProviders.includes(providerType);
-  const supportsAccount = accountSupportedProviders.includes(providerType);
   const isApi = sourceType === "api";
 
   // Auto-select appropriate source type when switching providers

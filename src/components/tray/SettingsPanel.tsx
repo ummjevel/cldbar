@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, Plus, Trash2, Sun, Moon, Monitor } from "lucide-react";
 import { startManualDrag } from "../../lib/windowState";
-import { providerColors, providerLabels } from "../../lib/colors";
+import { providerLabels } from "../../lib/colors";
 import { ProviderIcon } from "./ProviderIcon";
 import { applyTheme } from "../../lib/theme";
 import { useSettings } from "../../hooks/useProviderData";
@@ -92,7 +92,6 @@ export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile 
               <p className="text-xs text-muted text-center py-4">No profiles configured</p>
             )}
             {profiles.map((profile, i) => {
-              const colors = providerColors[profile.providerType as ProviderType];
               const sourceLabel = (profile.sourceType as SourceType) === "api" ? "API" : "Account";
               return (
                 <motion.div

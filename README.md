@@ -2,6 +2,8 @@
 
 Windows system tray app for monitoring AI coding tool usage. Tracks token consumption, active sessions, and daily trends for Claude, Gemini, and z.ai.
 
+[한국어](README.ko.md)
+
 ![Tauri v2](https://img.shields.io/badge/Tauri-v2-blue) ![React 19](https://img.shields.io/badge/React-19-61dafb) ![Rust](https://img.shields.io/badge/Rust-2021-orange)
 
 ## Features
@@ -67,7 +69,13 @@ npm run tauri dev
 npm run tauri build
 ```
 
-The installer will be output to `src-tauri/target/release/bundle/`.
+Build outputs:
+
+| File | Path |
+|------|------|
+| EXE (standalone) | `src-tauri/target/release/cldbar.exe` |
+| NSIS installer | `src-tauri/target/release/bundle/nsis/cldbar_*-setup.exe` |
+| MSI installer | `src-tauri/target/release/bundle/msi/cldbar_*.msi` |
 
 ## Configuration
 

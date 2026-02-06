@@ -2,22 +2,7 @@ import { useRef } from "react";
 import { motion } from "framer-motion";
 import { providerColors } from "../../lib/colors";
 import { ProviderIcon } from "./ProviderIcon";
-import type { Profile, ProviderType, SourceType } from "../../lib/types";
-
-function SourceBadge({ sourceType }: { sourceType: SourceType }) {
-  const isApi = sourceType === "api";
-  return (
-    <span
-      className="text-[8px] font-semibold uppercase leading-none px-1 py-0.5 rounded"
-      style={{
-        backgroundColor: "rgba(139,139,158,0.15)",
-        color: "#8b8b9e",
-      }}
-    >
-      {isApi ? "API" : "Account"}
-    </span>
-  );
-}
+import type { Profile, ProviderType } from "../../lib/types";
 
 interface Props {
   profiles: Profile[];
