@@ -10,7 +10,7 @@ Windows system tray app for monitoring AI coding tool usage. Tracks token consum
 
 - **Multi-provider support** — Claude Code, Gemini CLI, z.ai
 - **Dual source types** — Monitor local account usage or Claude API usage (Admin API key)
-- **System tray** — Lives in the Windows tray area; click to toggle the popup
+- **System tray** — Lives in the Windows tray area; left-click to toggle the popup, right-click to quit
 - **Live stats** — Input/output tokens, active sessions, message counts (auto-refreshes every 5s)
 - **7-day trend chart** — Daily usage sparkline per profile
 - **API cost tracking** — Real billing data for Claude API profiles
