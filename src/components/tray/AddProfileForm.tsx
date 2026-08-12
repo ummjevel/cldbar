@@ -13,6 +13,7 @@ interface Props {
 
 const providers: { type: ProviderType; label: string }[] = [
   { type: "claude", label: "Claude" },
+  { type: "codex", label: "Codex" },
   { type: "gemini", label: "Gemini" },
   // { type: "zai", label: "z.ai" },  // TODO: re-enable when z.ai API is stable
 ];
@@ -239,6 +240,7 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
                 onChange={(e) => setConfigDir(e.target.value)}
                 placeholder={
                   providerType === "claude" ? "C:\\Users\\...\\.claude"
+                  : providerType === "codex" ? "C:\\Users\\...\\.codex"
                   : providerType === "gemini" ? "C:\\Users\\...\\.gemini"
                   : "%APPDATA%\\zai"
                 }
@@ -260,6 +262,18 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
                 <FolderOpen size={12} className="text-muted" />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Codex notice */}
+        {providerType === "codex" && (
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-card border border-border">
+            <Info size={11} className="text-muted shrink-0 mt-0.5" />
+            <p className="text-[10px] text-muted leading-relaxed">
+              Reads Codex CLI session logs for token usage. Limit windows come live
+              from your ChatGPT account, falling back to the last recorded turn if
+              the sign-in has expired.
+            </p>
           </div>
         )}
 

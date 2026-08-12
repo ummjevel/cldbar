@@ -10,13 +10,15 @@ import { StatCards } from "./StatCards";
 import { ActiveSessions } from "./ActiveSessions";
 import { WeeklySparkline } from "./WeeklySparkline";
 import { SettingsPanel } from "./SettingsPanel";
+import { AlertSettingsPanel } from "./AlertSettingsPanel";
 import { AddProfileForm } from "./AddProfileForm";
-import { RateLimits } from "./RateLimits";
-import { useProfiles, useUsageStats, useActiveSessions, useDailyUsage, useRateLimitStatus } from "../../hooks/useProviderData";
+import { LimitWindows } from "./LimitWindows";
+import { useProfiles, useUsageStats, useActiveSessions, useDailyUsage, useRateLimitStatus, forgetProfile } from "../../hooks/useProviderData";
 import { isDialogOpen, isDragging, startManualDrag } from "../../lib/windowState";
+import { providerLabels } from "../../lib/colors";
 import type { ProviderType, SourceType } from "../../lib/types";
 
-type View = "main" | "settings" | "addProfile";
+type View = "main" | "settings" | "addProfile" | "alerts";
 
 export function TrayPopup() {
   const { profiles, refresh: refreshProfiles } = useProfiles();
@@ -34,7 +36,7 @@ export function TrayPopup() {
   const { stats, loading, refresh: refreshStats } = useUsageStats(activeProfileId);
   const { sessions, refresh: refreshSessions } = useActiveSessions(activeProfileId);
   const { data: dailyUsage, refresh: refreshDaily } = useDailyUsage(activeProfileId, 7);
-  const { status: rateLimitStatus, refresh: refreshRateLimits } = useRateLimitStatus(activeProfileId);
+  const { status: rateLimitStatus, loading: limitsLoading, refresh: refreshRateLimits } = useRateLimitStatus(activeProfileId);
 
   // Hide window on blur (debounced to allow drag/dialog interactions)
   useEffect(() => {
@@ -57,12 +59,15 @@ export function TrayPopup() {
     };
   }, []);
 
-  // Dynamic window height based on session count (top-left stays fixed, only height changes)
+  // Dynamic window height (top-left stays fixed, only height changes). The main
+  // view sizes to its session count; the alerts panel needs the extra room.
   useEffect(() => {
-    if (view !== "main") return;
     const win = getCurrentWindow();
     const count = sessions.length;
-    const targetH = count <= 1 ? 490 : count === 2 ? 530 : 600;
+    const targetH =
+      view === "alerts" ? 620
+      : view !== "main" ? 490
+      : count <= 1 ? 490 : count === 2 ? 530 : 600;
     const scale = window.devicePixelRatio || 1;
     const W = Math.round(380 * scale);
     const H = Math.round(targetH * scale);
@@ -76,17 +81,15 @@ export function TrayPopup() {
     })();
   }, [sessions.length, view]);
 
-  // Auto-refresh every 5 seconds (only on main view)
-  useEffect(() => {
-    if (view !== "main") return;
-    const interval = setInterval(() => {
-      refreshStats();
-      refreshSessions();
-      refreshDaily();
-      refreshRateLimits();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [view, refreshStats, refreshSessions, refreshDaily, refreshRateLimits]);
+  // Each profile is loaded once and kept; the refresh button is what goes back
+  // to the backend. Polling here re-read the logs and re-hit the usage APIs
+  // every few seconds for numbers that move far slower than that.
+  const refreshAll = useCallback(() => {
+    refreshStats();
+    refreshSessions();
+    refreshDaily();
+    refreshRateLimits();
+  }, [refreshStats, refreshSessions, refreshDaily, refreshRateLimits]);
 
   const sourceType: SourceType = (activeProfile?.sourceType as SourceType) || "account";
   const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0;
@@ -94,6 +97,7 @@ export function TrayPopup() {
   const handleRemoveProfile = useCallback(async (id: string) => {
     try {
       await invoke("remove_profile", { id });
+      forgetProfile(id);
       const updated = await refreshProfiles();
       if (activeProfileId === id) {
         // Select the next available profile, or null if none
@@ -134,6 +138,21 @@ export function TrayPopup() {
               onBack={() => setView("main")}
               onAddProfile={() => setView("addProfile")}
               onRemoveProfile={handleRemoveProfile}
+              onOpenAlerts={() => setView("alerts")}
+            />
+          </motion.div>
+        ) : view === "alerts" ? (
+          <motion.div
+            key="alerts"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.15 }}
+            className="h-full"
+          >
+            <AlertSettingsPanel
+              profiles={profiles}
+              onBack={() => setView("settings")}
             />
           </motion.div>
         ) : view === "addProfile" ? (
@@ -178,15 +197,16 @@ export function TrayPopup() {
               </div>
               <div className="flex items-center gap-1.5">
                 <button
-                  className="p-1.5 rounded-md hover:bg-card-hover transition-colors"
-                  onClick={() => {
-                    refreshStats();
-                    refreshSessions();
-                    refreshDaily();
-                    refreshRateLimits();
-                  }}
+                  className="p-1.5 rounded-md hover:bg-card-hover transition-colors disabled:opacity-60"
+                  onClick={refreshAll}
+                  disabled={loading}
+                  aria-label="Refresh"
+                  title="Refresh"
                 >
-                  <RefreshCw size={13} className="text-muted" />
+                  <RefreshCw
+                    size={13}
+                    className={`text-muted ${loading ? "animate-spin" : ""}`}
+                  />
                 </button>
                 <button
                   className="p-1.5 rounded-md hover:bg-card-hover transition-colors"
@@ -234,15 +254,20 @@ export function TrayPopup() {
                     transition={{ duration: 0.2 }}
                     className="flex flex-col gap-3 min-h-full"
                   >
+                    {/* What's left and when it resets — the reason the popup gets opened */}
+                    <LimitWindows
+                      status={rateLimitStatus}
+                      providerLabel={providerLabels[(activeProfile.providerType as ProviderType) || "claude"]}
+                      loading={limitsLoading}
+                      sourceType={sourceType}
+                    />
+
                     {/* Usage meter */}
                     <UsageMeter
                       used={totalTokens}
                       providerType={(activeProfile.providerType as ProviderType) || "claude"}
                       loading={loading}
                     />
-
-                    {/* Rate limits (Claude account only) */}
-                    <RateLimits status={rateLimitStatus} />
 
                     {/* Stat cards */}
                     <StatCards

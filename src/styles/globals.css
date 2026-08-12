@@ -11,14 +11,26 @@
   --theme-text: #f0f0f5;
   --theme-text-secondary: #a0a0b2;
   --theme-muted: #6b6b80;
-  --theme-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  /* Offset + blur only. A zero-offset 1px ring sits outside the border box and
+     escapes the rounded clip as a bright hairline; the popup already draws a
+     real border. */
+  --theme-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   --theme-scrollbar: rgba(255, 255, 255, 0.1);
   --theme-selection: rgba(217, 119, 6, 0.3);
   --theme-input-bg: rgba(0, 0, 0, 0.2);
 
+  /* Status colours are read against the card, so they follow the theme like
+     everything else. These are tuned for the dark card. */
+  --theme-success: #22c55e;
+  --theme-warning: #f59e0b;
+  --theme-danger: #f87171;
+
   --provider-claude: #d97706;
   --provider-claude-light: #f59e0b;
   --provider-claude-bg: rgba(217, 119, 6, 0.1);
+  --provider-codex: #a1a1aa;
+  --provider-codex-light: #e4e4e7;
+  --provider-codex-bg: rgba(161, 161, 170, 0.12);
   --provider-gemini: #4285f4;
   --provider-gemini-light: #60a5fa;
   --provider-gemini-bg: rgba(66, 133, 244, 0.1);
@@ -36,14 +48,22 @@
   --theme-text: #111122;
   --theme-text-secondary: #3a3a50;
   --theme-muted: #5a5a70;
-  --theme-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.6);
+  --theme-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   --theme-scrollbar: rgba(0, 0, 0, 0.1);
   --theme-selection: rgba(146, 64, 14, 0.2);
   --theme-input-bg: rgba(255, 255, 255, 0.6);
 
+  /* Darkened so 9px status text still clears 4.5:1 on the near-white card. */
+  --theme-success: #15803d;
+  --theme-warning: #b45309;
+  --theme-danger: #b91c1c;
+
   --provider-claude: #92400e;
   --provider-claude-light: #b45309;
   --provider-claude-bg: rgba(146, 64, 14, 0.1);
+  --provider-codex: #3f3f46;
+  --provider-codex-light: #52525b;
+  --provider-codex-bg: rgba(63, 63, 70, 0.08);
   --provider-gemini: #1d4ed8;
   --provider-gemini-light: #2563eb;
   --provider-gemini-bg: rgba(29, 78, 216, 0.08);
@@ -69,9 +89,9 @@
   --color-zai: #10b981;
   --color-zai-light: #34d399;
 
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-success: var(--theme-success);
+  --color-warning: var(--theme-warning);
+  --color-danger: var(--theme-danger);
 
   --font-sans: 'Segoe UI', -apple-system, system-ui, sans-serif;
   --radius-lg: 12px;
@@ -98,11 +118,13 @@
 }
 
 html {
+  height: 100%;
   background: transparent;
 }
 
 body {
   margin: 0;
+  height: 100%;
   background: transparent;
   color: var(--color-text);
   font-family: var(--font-sans);
@@ -123,7 +145,19 @@ body {
   border-radius: 3px;
 }
 
+/* The window itself is square, so the corners are rounded here. `100%` rather
+   than `100vh`: on fractional display scaling the viewport unit and the real
+   client box disagree, and the gap shows up as a bright seam along an edge.
+   The radius must stay in step with the popup's own `rounded-xl` (12px). */
 #root {
-  height: 100vh;
+  height: 100%;
   clip-path: inset(0 round 12px);
+}
+
+/* The alert overlay is sized to its content and each toast rounds itself,
+   so it must not be clipped to a single rounded box. */
+[data-window="notification"] #root {
+  height: auto;
+  min-height: 100vh;
+  clip-path: none;
 }

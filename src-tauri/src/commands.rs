@@ -1,6 +1,8 @@
+use crate::alerts;
 use crate::profile::{self, AppConfig, AppSettings, Profile};
 use crate::providers::claude::ClaudeProvider;
 use crate::providers::claude_api::ClaudeApiProvider;
+use crate::providers::codex::CodexProvider;
 use crate::providers::gemini::GeminiProvider;
 use crate::providers::zai::ZaiProvider;
 use crate::providers::zai_api::ZaiApiProvider;
@@ -26,6 +28,8 @@ pub struct ProfileInfo {
     pub enabled: bool,
     pub source_type: String,
     pub has_api_key: bool,
+    /// Whether this profile reports rate limit windows, i.e. whether alerts apply to it.
+    pub supports_rate_limits: bool,
 }
 
 impl From<&Profile> for ProfileInfo {
@@ -38,6 +42,7 @@ impl From<&Profile> for ProfileInfo {
             enabled: p.enabled,
             source_type: p.source_type.clone(),
             has_api_key: p.api_key.is_some(),
+            supports_rate_limits: alerts::supports_rate_limits(p),
         }
     }
 }
@@ -74,6 +79,7 @@ pub fn add_profile(state: State<AppState>, profile: Profile) -> Result<(), Strin
             Box::new(ClaudeApiProvider::new(key.clone()))
         }
         ("claude", _) => Box::new(ClaudeProvider::new(profile.config_dir.clone().into())),
+        ("codex", _) => Box::new(CodexProvider::new(profile.config_dir.clone().into())),
         ("gemini", _) => Box::new(GeminiProvider::new(profile.config_dir.clone().into())),
         ("zai", "api") => {
             let key = profile.api_key.as_ref()
@@ -115,7 +121,10 @@ pub fn remove_profile(state: State<AppState>, id: String) -> Result<(), String> 
     Ok(())
 }
 
-#[tauri::command]
+// The data commands touch the filesystem and the network. `(async)` runs them on
+// the async runtime instead of the main thread, which would otherwise stall the
+// UI and the tray for the duration of every poll.
+#[tauri::command(async)]
 pub fn get_usage_stats(state: State<AppState>, profile_id: String) -> Result<UsageStats, String> {
     let providers = state
         .providers
@@ -129,7 +138,7 @@ pub fn get_usage_stats(state: State<AppState>, profile_id: String) -> Result<Usa
     provider.get_usage_stats()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_active_sessions(
     state: State<AppState>,
     profile_id: String,
@@ -146,7 +155,7 @@ pub fn get_active_sessions(
     provider.get_active_sessions()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_daily_usage(
     state: State<AppState>,
     profile_id: String,
@@ -164,7 +173,7 @@ pub fn get_daily_usage(
     provider.get_daily_usage(days)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_session_history(
     state: State<AppState>,
     profile_id: String,
@@ -204,7 +213,7 @@ pub fn update_settings(state: State<AppState>, settings: AppSettings) -> Result<
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_all_usage_stats(state: State<AppState>) -> Result<Vec<UsageStats>, String> {
     let config = state
         .config
@@ -237,7 +246,7 @@ pub fn get_all_usage_stats(state: State<AppState>) -> Result<Vec<UsageStats>, St
     Ok(all_stats)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_rate_limit_status(state: State<AppState>, profile_id: String) -> Result<RateLimitStatus, String> {
     let config = state
         .config
@@ -250,36 +259,15 @@ pub fn get_rate_limit_status(state: State<AppState>, profile_id: String) -> Resu
         .find(|p| p.id == profile_id)
         .ok_or_else(|| format!("Profile not found: {}", profile_id))?;
 
-    let unavailable = RateLimitStatus {
-        available: false,
-        five_hour: None,
-        seven_day: None,
-        seven_day_opus: None,
-    };
+    let profile = profile.clone();
+    drop(config);
 
-    match (profile.provider_type.as_str(), profile.source_type.as_str()) {
-        ("claude", "account") | ("claude", "") => {
-            let provider = ClaudeProvider::new(profile.config_dir.clone().into());
-            Ok(provider.get_rate_limit_status())
-        }
-        ("zai", "api") => {
-            let key = match &profile.api_key {
-                Some(k) => k.clone(),
-                None => return Ok(unavailable),
-            };
-            let provider = ZaiApiProvider::new(key);
-            Ok(provider.get_rate_limit_status())
-        }
-        _ => Ok(unavailable),
-    }
+    Ok(alerts::rate_limit_for_profile(&profile))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn validate_api_key(api_key: String, provider_type: Option<String>) -> Result<bool, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let client = crate::providers::http_client();
 
     let provider = provider_type.unwrap_or_else(|| "claude".to_string());
 

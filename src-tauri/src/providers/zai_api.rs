@@ -58,21 +58,13 @@ impl ZaiApiProvider {
         }
     }
 
-    fn client(&self) -> Result<reqwest::blocking::Client, String> {
-        reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))
+    fn client(&self) -> Result<&'static reqwest::blocking::Client, String> {
+        Ok(super::http_client())
     }
 
     /// Fetch quota/rate limit status from z.ai monitoring API.
     pub fn get_rate_limit_status(&self) -> RateLimitStatus {
-        let unavailable = RateLimitStatus {
-            available: false,
-            five_hour: None,
-            seven_day: None,
-            seven_day_opus: None,
-        };
+        let unavailable = RateLimitStatus::unavailable();
 
         let client = match self.client() {
             Ok(c) => c,
@@ -137,6 +129,7 @@ impl ZaiApiProvider {
                     five_hour: token_window,
                     seven_day: time_window,
                     seven_day_opus: None,
+                    updated_at: None,
                 }
             }
             _ => unavailable,

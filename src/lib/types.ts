@@ -1,11 +1,11 @@
-export type ProviderType = "claude" | "gemini" | "zai";
+export type ProviderType = "claude" | "codex" | "gemini" | "zai";
 export type SourceType = "account" | "api";
 
 /** Providers that support API source type */
 export const apiSupportedProviders: ProviderType[] = ["claude"];  // zai temporarily disabled
 
 /** Providers that support account (local folder) source type */
-export const accountSupportedProviders: ProviderType[] = ["claude", "gemini"];
+export const accountSupportedProviders: ProviderType[] = ["claude", "codex", "gemini"];
 
 export interface Profile {
   id: string;
@@ -15,6 +15,8 @@ export interface Profile {
   enabled: boolean;
   sourceType: SourceType;
   hasApiKey: boolean;
+  /** Whether this profile reports limit windows, i.e. whether alerts apply to it */
+  supportsRateLimits: boolean;
 }
 
 export interface UsageStats {
@@ -67,7 +69,29 @@ export interface RateLimitStatus {
   fiveHour: RateLimitWindow | null;
   sevenDay: RateLimitWindow | null;
   sevenDayOpus: RateLimitWindow | null;
+  /** When the reading was taken; null means it is live */
+  updatedAt: string | null;
 }
+
+/** Machine keys of the limit windows a provider can report */
+export type LimitWindowKey = "fiveHour" | "sevenDay" | "sevenDayOpus";
+
+export interface AlertSettings {
+  enabled: boolean;
+  /** Usage percentages that raise an alert the first time they are crossed */
+  usageThresholds: number[];
+  /** Minutes before a window resets that raise a reminder */
+  resetReminderMinutes: number[];
+  /** Profiles to watch. Empty means every profile that reports limits */
+  profileIds: string[];
+  windows: LimitWindowKey[];
+  checkIntervalSecs: number;
+  /** Seconds a toast stays on screen; 0 keeps it until dismissed */
+  durationSecs: number;
+}
+
+/** Whether limit windows lead with what is left or what has been spent. */
+export type LimitDisplay = "remaining" | "used";
 
 export interface AppSettings {
   theme: string;
@@ -75,4 +99,27 @@ export interface AppSettings {
   launchOnStartup: boolean;
   notificationsEnabled: boolean;
   tokenAlertThreshold: number;
+  limitDisplay: LimitDisplay;
+  alerts: AlertSettings;
+}
+
+export type AlertKind = "usage" | "reset" | "test";
+export type AlertSeverity = "critical" | "warning" | "info";
+
+export interface Alert {
+  id: string;
+  kind: AlertKind;
+  severity: AlertSeverity;
+  profileId: string;
+  profileName: string;
+  providerType: ProviderType;
+  windowKey: LimitWindowKey;
+  windowLabel: string;
+  title: string;
+  message: string;
+  utilization: number;
+  threshold: number | null;
+  reminderMinutes: number | null;
+  resetsAt: string | null;
+  createdAt: string;
 }

@@ -22,6 +22,21 @@
         "skipTaskbar": true,
         "resizable": false,
         "transparent": true
+      },
+      {
+        "label": "notification",
+        "title": "cldbar alert",
+        "width": 380,
+        "height": 190,
+        "visible": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "transparent": true,
+        "shadow": false,
+        "focus": false,
+        "focusable": false
       }
     ],
     "security": {
@@ -31,7 +46,8 @@
       "id": "main",
       "iconPath": "icons/32x32.png",
       "iconAsTemplate": false,
-      "tooltip": "cldbar - AI usage monitor"
+      "tooltip": "cldbar - AI usage monitor",
+      "showMenuOnLeftClick": false
     }
   },
   "bundle": {

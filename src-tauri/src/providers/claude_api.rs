@@ -15,7 +15,9 @@ struct CacheEntry<T> {
 /// Requires an Admin API key (sk-ant-admin...).
 pub struct ClaudeApiProvider {
     api_key: String,
-    client: reqwest::blocking::Client,
+    /// Borrowed from the shared pool: a per-provider client would be dropped
+    /// when a profile is removed, which panics inside an async command.
+    client: &'static reqwest::blocking::Client,
     usage_cache: Mutex<Option<CacheEntry<UsageStats>>>,
     daily_cache: Mutex<Option<CacheEntry<Vec<DailyUsage>>>>,
 }
@@ -91,14 +93,9 @@ struct CostResult {
 
 impl ClaudeApiProvider {
     pub fn new(api_key: String) -> Self {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_default();
-
         Self {
             api_key,
-            client,
+            client: super::http_client(),
             usage_cache: Mutex::new(None),
             daily_cache: Mutex::new(None),
         }

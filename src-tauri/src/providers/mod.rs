@@ -56,6 +56,22 @@ pub struct RateLimitStatus {
     pub five_hour: Option<RateLimitWindow>,
     pub seven_day: Option<RateLimitWindow>,
     pub seven_day_opus: Option<RateLimitWindow>,
+    /// When the reading was taken, for providers that report limits from a local
+    /// snapshot rather than live. `None` means the numbers are current.
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+impl RateLimitStatus {
+    pub fn unavailable() -> Self {
+        Self {
+            available: false,
+            five_hour: None,
+            seven_day: None,
+            seven_day_opus: None,
+            updated_at: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +80,23 @@ pub struct RateLimitWindow {
     pub label: String,
     pub utilization: f64,
     pub resets_at: Option<String>,
+}
+
+/// One process-wide blocking HTTP client.
+///
+/// The data commands run on the async runtime, and dropping a
+/// `reqwest::blocking::Client` inside an async context panics with "Cannot drop
+/// a runtime in a context where blocking is not allowed". A single client that
+/// outlives every request never reaches that drop, and it reuses connections
+/// instead of standing up a runtime per call.
+pub fn http_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new())
+    })
 }
 
 pub trait Provider: Send + Sync {
@@ -78,6 +111,7 @@ pub trait Provider: Send + Sync {
 
 pub mod claude;
 pub mod claude_api;
+pub mod codex;
 pub mod gemini;
 pub mod zai;
 pub mod zai_api;

@@ -3,27 +3,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUpRight, ArrowDownLeft, MessageSquare, DollarSign } from "lucide-react";
 import { formatTokens, formatCost } from "../../lib/format";
 import { providerColors } from "../../lib/colors";
+import { Tooltip } from "./Tooltip";
 import type { UsageStats, ProviderType, SourceType } from "../../lib/types";
 
 interface Props {
   stats: UsageStats | null;
   providerType: ProviderType;
   sourceType?: SourceType;
-}
-
-function Tooltip({ text }: { text: string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 4 }}
-      transition={{ duration: 0.15 }}
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded-md text-[9px] text-text whitespace-nowrap z-10 border border-border-light pointer-events-none"
-      style={{ backgroundColor: "var(--theme-bg)", backdropFilter: "blur(12px)" }}
-    >
-      {text}
-    </motion.div>
-  );
 }
 
 export function StatCards({ stats, providerType, sourceType }: Props) {

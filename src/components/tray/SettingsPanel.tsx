@@ -1,17 +1,18 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, Plus, Trash2, Sun, Moon, Monitor } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Sun, Moon, Monitor, Bell, ChevronRight, BatteryMedium, Gauge } from "lucide-react";
 import { startManualDrag } from "../../lib/windowState";
 import { providerLabels } from "../../lib/colors";
 import { ProviderIcon } from "./ProviderIcon";
 import { applyTheme } from "../../lib/theme";
 import { useSettings } from "../../hooks/useProviderData";
-import type { Profile, ProviderType, SourceType } from "../../lib/types";
+import type { LimitDisplay, Profile, ProviderType, SourceType } from "../../lib/types";
 
 interface Props {
   profiles: Profile[];
   onBack: () => void;
   onAddProfile: () => void;
   onRemoveProfile: (id: string) => void;
+  onOpenAlerts: () => void;
 }
 
 const themes = [
@@ -20,7 +21,12 @@ const themes = [
   { value: "dark", label: "Dark", icon: Moon },
 ];
 
-export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile }: Props) {
+const limitDisplays: { value: LimitDisplay; label: string; icon: typeof BatteryMedium }[] = [
+  { value: "remaining", label: "Remaining", icon: BatteryMedium },
+  { value: "used", label: "Used", icon: Gauge },
+];
+
+export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile, onOpenAlerts }: Props) {
   const { settings, update } = useSettings();
 
   return (
@@ -70,6 +76,61 @@ export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile 
               );
             })}
           </div>
+        </div>
+
+        {/* Limit display section */}
+        <div>
+          <span className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2 block">
+            Limits show
+          </span>
+          <div className="flex gap-1.5">
+            {limitDisplays.map((d) => {
+              const active = (settings?.limitDisplay || "remaining") === d.value;
+              return (
+                <button
+                  key={d.value}
+                  onClick={() => {
+                    if (!settings) return;
+                    update({ ...settings, limitDisplay: d.value });
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium border transition-all"
+                  style={{
+                    borderColor: active ? "var(--color-text-secondary)" : "var(--color-border)",
+                    backgroundColor: active ? "var(--color-card-hover)" : "var(--color-card)",
+                    color: active ? "var(--color-text)" : "var(--color-muted)",
+                  }}
+                >
+                  <d.icon size={12} />
+                  {d.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-muted mt-1.5 leading-relaxed">
+            Hovering a limit always shows the other way round.
+          </p>
+        </div>
+
+        {/* Alerts section */}
+        <div>
+          <span className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2 block">
+            Notifications
+          </span>
+          <button
+            onClick={onOpenAlerts}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-card border border-border hover:bg-card-hover transition-colors text-left"
+          >
+            <Bell size={14} className="text-muted shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-text">Alerts</div>
+              <div className="text-[10px] text-muted">
+                {settings?.alerts?.enabled
+                  ? "Warn me before I run out of limit"
+                  : "Off"}
+              </div>
+            </div>
+            <ChevronRight size={13} className="text-muted shrink-0" />
+          </button>
         </div>
 
         {/* Profiles section */}

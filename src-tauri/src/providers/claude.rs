@@ -101,6 +101,16 @@ struct SessionUsage {
 
 #[derive(Debug, Deserialize)]
 struct OAuthCredentials {
+    /// Current Claude Code layout nests the token under this key.
+    #[serde(default, rename = "claudeAiOauth")]
+    claude_ai_oauth: Option<OAuthTokens>,
+    /// Older layout stored it at the top level.
+    #[serde(default, rename = "accessToken")]
+    access_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthTokens {
     #[serde(default, rename = "accessToken")]
     access_token: Option<String>,
 }
@@ -128,32 +138,22 @@ impl ClaudeProvider {
         let creds_path = self.config_dir.join(".credentials.json");
         let data = fs::read_to_string(&creds_path).ok()?;
         let creds: OAuthCredentials = serde_json::from_str(&data).ok()?;
-        creds.access_token
+        creds
+            .claude_ai_oauth
+            .and_then(|t| t.access_token)
+            .or(creds.access_token)
     }
 
     /// Fetch rate limit utilization from Claude OAuth usage API.
     pub fn get_rate_limit_status(&self) -> RateLimitStatus {
-        let unavailable = RateLimitStatus {
-            available: false,
-            five_hour: None,
-            seven_day: None,
-            seven_day_opus: None,
-        };
+        let unavailable = RateLimitStatus::unavailable();
 
         let token = match self.read_oauth_token() {
             Some(t) => t,
             None => return unavailable,
         };
 
-        let client = match reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-        {
-            Ok(c) => c,
-            Err(_) => return unavailable,
-        };
-
-        let resp = client
+        let resp = super::http_client()
             .get("https://api.anthropic.com/api/oauth/usage")
             .header("Authorization", format!("Bearer {}", token))
             .header("anthropic-beta", "oauth-2025-04-20")
@@ -178,6 +178,8 @@ impl ClaudeProvider {
                         utilization: w.utilization,
                         resets_at: w.resets_at,
                     }),
+                    // Fetched live from the OAuth usage API.
+                    updated_at: None,
                 },
                 Err(_) => unavailable,
             },
