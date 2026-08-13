@@ -115,8 +115,10 @@ fn default_alert_windows() -> Vec<String> {
     ]
 }
 
+/// Limit windows move over hours, and the endpoints behind them push back when
+/// polled hard, so the engine checks on a quarter-hour rather than in seconds.
 fn default_check_interval_secs() -> u64 {
-    60
+    900
 }
 
 fn default_toast_duration_secs() -> u64 {

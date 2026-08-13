@@ -26,6 +26,9 @@ const ALERT_EVENT: &str = "alert://push";
 /// The three limit windows a profile can report, in display order.
 const WINDOW_KEYS: [&str; 3] = ["fiveHour", "sevenDay", "sevenDayOpus"];
 
+/// Narrowest reset-reminder window, in minutes.
+const MIN_REMINDER_TOLERANCE_MINUTES: u64 = 15;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Alert {
@@ -66,33 +69,75 @@ pub struct AlertState {
 /// Claude and Codex both answer over the network, while the tray refreshes
 /// every few seconds and the engine polls on its own schedule. The windows
 /// themselves move far slower than that, so one shared reading serves both.
-const LIMIT_TTL: Duration = Duration::from_secs(30);
+const LIMIT_TTL: Duration = Duration::from_secs(120);
+
+/// Longest gap between retries once a provider keeps refusing.
+const MAX_BACKOFF: Duration = Duration::from_secs(30 * 60);
+
+struct CachedLimit {
+    fetched_at: Instant,
+    status: RateLimitStatus,
+    /// Consecutive failed reads, used to widen the gap before trying again.
+    failures: u32,
+}
+
+/// How long to sit on a reading before asking again.
+///
+/// A provider that answers gets the normal short TTL. One that refuses gets
+/// progressively more room: retrying a rate-limited endpoint on a fixed short
+/// cycle keeps the limit alive instead of letting it lapse.
+fn retry_delay(failures: u32) -> Duration {
+    if failures == 0 {
+        return LIMIT_TTL;
+    }
+    let minutes = 1u64.checked_shl(failures - 1).unwrap_or(u64::MAX);
+    Duration::from_secs(minutes.saturating_mul(60)).min(MAX_BACKOFF)
+}
 
 /// Last reading per profile id, shared by the tray commands and the engine.
-fn limit_cache() -> &'static Mutex<HashMap<String, (Instant, RateLimitStatus)>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, (Instant, RateLimitStatus)>>> = OnceLock::new();
+fn limit_cache() -> &'static Mutex<HashMap<String, CachedLimit>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CachedLimit>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// Rate limit windows for a profile, served from a short-lived cache.
-/// Failures are cached too, so an unreachable endpoint is retried on the same
-/// schedule instead of on every refresh.
+///
+/// Failed reads are cached as well, and back off, so an endpoint that is
+/// rate limiting us is not asked again every minute for hours on end.
 pub fn rate_limit_for_profile(profile: &Profile) -> RateLimitStatus {
+    let mut failures = 0;
+
     if let Ok(cache) = limit_cache().lock() {
-        if let Some((fetched_at, status)) = cache.get(&profile.id) {
-            if fetched_at.elapsed() < LIMIT_TTL {
-                return status.clone();
+        if let Some(entry) = cache.get(&profile.id) {
+            if entry.fetched_at.elapsed() < retry_delay(entry.failures) {
+                return entry.status.clone();
             }
+            failures = entry.failures;
         }
     }
 
     let status = fetch_rate_limit(profile);
+    let failures = if status.available { 0 } else { failures.saturating_add(1) };
 
     if let Ok(mut cache) = limit_cache().lock() {
-        cache.insert(profile.id.clone(), (Instant::now(), status.clone()));
+        cache.insert(
+            profile.id.clone(),
+            CachedLimit {
+                fetched_at: Instant::now(),
+                status: status.clone(),
+                failures,
+            },
+        );
     }
 
     status
+}
+
+/// Drop a profile's backoff so an explicit refresh is honoured immediately.
+pub fn forget_cached_limit(profile_id: &str) {
+    if let Ok(mut cache) = limit_cache().lock() {
+        cache.remove(profile_id);
+    }
 }
 
 /// Ask the provider directly. Returns an unavailable status for providers that
@@ -229,6 +274,11 @@ fn collect_alerts(
     let mut alerts = Vec::new();
     let now = chrono::Utc::now().to_rfc3339();
 
+    // How near a reminder's mark the reset has to be for it to count as due.
+    // It follows the check cadence so two consecutive checks cannot step over
+    // a window entirely, with a floor for very frequent checking.
+    let tolerance = (settings.check_interval_secs / 60).max(MIN_REMINDER_TOLERANCE_MINUTES) as i64;
+
     for key in WINDOW_KEYS {
         if !settings.windows.iter().any(|w| w.as_str() == key) {
             continue;
@@ -296,16 +346,32 @@ fn collect_alerts(
             continue;
         };
 
+        let key_for = |m: u32| format!("{}|reset:{}", prefix, m);
+
+        // Retire reminders whose window has gone by unnoticed, so an
+        // "hour before" warning never turns up with ten minutes left.
+        for m in settings.reset_reminder_minutes.iter().copied() {
+            if minutes_left < m as i64 - tolerance {
+                fired.insert(key_for(m));
+            }
+        }
+
+        // Due when the reset falls inside the reminder's window. Checks run on
+        // a schedule, so an exact match would almost never come up; the window
+        // is what makes "an hour before" mean an hour rather than whenever the
+        // next check happened to land.
         let mut due: Vec<u32> = settings
             .reset_reminder_minutes
             .iter()
             .copied()
-            .filter(|m| minutes_left <= *m as i64)
+            .filter(|m| {
+                let mark = *m as i64;
+                minutes_left <= mark && minutes_left >= mark - tolerance
+            })
             .collect();
         due.sort_unstable();
 
         if let Some(&most_urgent) = due.first() {
-            let key_for = |m: u32| format!("{}|reset:{}", prefix, m);
             if !fired.contains(&key_for(most_urgent)) {
                 alerts.push(Alert {
                     id: format!("{}-{}", key_for(most_urgent), now),
@@ -352,7 +418,7 @@ fn run_check(app: &AppHandle) -> u64 {
         Err(_) => return 60,
     };
 
-    let interval = settings.check_interval_secs.clamp(15, 3600);
+    let interval = settings.check_interval_secs.clamp(60, 3600);
     if !settings.enabled {
         return interval;
     }
