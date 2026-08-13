@@ -15,12 +15,15 @@ interface Props {
 }
 
 const THRESHOLD_CHOICES = [50, 60, 70, 80, 90, 95];
-const REMINDER_CHOICES = [5, 10, 15, 30, 60, 120];
+// Reminders resolve to the check window, so anything finer than that would
+// mostly slip between checks.
+const REMINDER_CHOICES = [15, 30, 60, 120, 240];
+// Anything under a minute is clamped by the engine, so it is not offered.
 const INTERVAL_CHOICES = [
-  { value: 30, label: "30s" },
   { value: 60, label: "1m" },
   { value: 300, label: "5m" },
   { value: 900, label: "15m" },
+  { value: 1800, label: "30m" },
 ];
 const DURATION_CHOICES = [
   { value: 8, label: "8s" },
@@ -171,7 +174,7 @@ export function AlertSettingsPanel({ profiles, onBack }: Props) {
           {/* Reset reminders */}
           <Section
             title="Before reset"
-            hint="Remind me this long before a window resets, if it has been used."
+            hint="Remind me around this long before a window resets, if it has been used. A reminder counts as due anywhere within one check interval of its mark, so it lands near the time rather than exactly on it."
           >
             <div className="flex flex-wrap gap-1.5">
               {REMINDER_CHOICES.map((m) => (
@@ -266,7 +269,10 @@ export function AlertSettingsPanel({ profiles, onBack }: Props) {
           </Section>
 
           {/* Cadence */}
-          <Section title="Check every">
+          <Section
+            title="Check every"
+            hint="Limits are read on this schedule, so an alert can land up to one interval late. Reading more often risks the provider refusing to answer at all."
+          >
             <div className="flex flex-wrap gap-1.5">
               {INTERVAL_CHOICES.map((c) => (
                 <Chip
