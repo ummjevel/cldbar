@@ -48,6 +48,12 @@ function useCachedInvoke<T>(
   const argsRef = useRef(args);
   argsRef.current = args;
 
+  // The key currently on screen. A refresh that resolves after the user has
+  // switched profiles still lands in the cache under its own key, but must
+  // not overwrite what the new profile is showing.
+  const activeKeyRef = useRef(cacheKey);
+  activeKeyRef.current = cacheKey;
+
   const refresh = useCallback(async (extraArgs?: Record<string, unknown>) => {
     if (cacheKey === null) {
       setData(fallback);
@@ -58,11 +64,11 @@ function useCachedInvoke<T>(
     try {
       const result = await invoke<T>(command, { ...argsRef.current, ...extraArgs });
       if (shouldCache(result)) cache.set(cacheKey, result);
-      setData(result);
+      if (activeKeyRef.current === cacheKey) setData(result);
     } catch (e) {
       console.error(`Failed to run ${command}:`, e);
     } finally {
-      setLoading(false);
+      if (activeKeyRef.current === cacheKey) setLoading(false);
     }
   }, [command, cacheKey, fallback, shouldCache]);
 
@@ -124,13 +130,13 @@ export function useActiveSessions(profileId: string | null) {
 }
 
 export function useDailyUsage(profileId: string | null, days: number = 7) {
-  const { data, refresh } = useCachedInvoke<DailyUsage[]>(
+  const { data, loading, refresh } = useCachedInvoke<DailyUsage[]>(
     "get_daily_usage",
     profileId && `daily:${profileId}:${days}`,
     { profileId, days },
     NO_DAILY,
   );
-  return { data, refresh };
+  return { data, loading, refresh };
 }
 
 /** Only a reading that actually carries windows is worth keeping. */
@@ -151,25 +157,6 @@ export function useRateLimitStatus(profileId: string | null) {
   const forceRefresh = useCallback(() => refresh({ force: true }), [refresh]);
 
   return { status: data, loading, refresh, forceRefresh };
-}
-
-export function useAllUsageStats() {
-  const [stats, setStats] = useState<UsageStats[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    try {
-      const result = await invoke<UsageStats[]>("get_all_usage_stats");
-      setStats(result);
-    } catch (e) {
-      console.error("Failed to get all usage stats:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
-  return { stats, loading, refresh };
 }
 
 /**

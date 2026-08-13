@@ -1,20 +1,18 @@
 use crate::alerts;
 use crate::profile::{self, AppConfig, AppSettings, Profile};
-use crate::providers::claude::ClaudeProvider;
-use crate::providers::claude_api::ClaudeApiProvider;
-use crate::providers::codex::CodexProvider;
-use crate::providers::gemini::GeminiProvider;
-use crate::providers::zai::ZaiProvider;
-use crate::providers::zai_api::ZaiApiProvider;
-use crate::providers::{DailyUsage, Provider, RateLimitStatus, Session, UsageStats};
+use crate::providers::{self, DailyUsage, Provider, RateLimitStatus, Session, UsageStats};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 
 pub struct AppState {
     pub config: Mutex<AppConfig>,
-    pub providers: Mutex<HashMap<String, Box<dyn Provider>>>,
+    /// Provider implementation per profile id. Values are `Arc` so a command
+    /// can clone its provider out and release this lock before doing any slow
+    /// filesystem or network work — holding the lock across a fetch would
+    /// stall every other command for its duration.
+    pub providers: Mutex<HashMap<String, Arc<dyn Provider>>>,
 }
 
 /// DTO that excludes the API key from frontend exposure.
@@ -47,22 +45,29 @@ impl From<&Profile> for ProfileInfo {
     }
 }
 
+fn lock_err<T>(what: &str) -> impl Fn(std::sync::PoisonError<T>) -> String + '_ {
+    move |e| format!("Failed to lock {}: {}", what, e)
+}
+
+/// Snapshot the provider for a profile, releasing the registry lock immediately.
+fn provider_for(state: &State<AppState>, profile_id: &str) -> Result<Arc<dyn Provider>, String> {
+    let providers = state.providers.lock().map_err(lock_err("providers"))?;
+    providers
+        .get(profile_id)
+        .cloned()
+        .ok_or_else(|| format!("Profile not found: {}", profile_id))
+}
+
+// --- Profile management ---
+
 #[tauri::command]
 pub fn get_profiles(state: State<AppState>) -> Result<Vec<ProfileInfo>, String> {
-    let config = state
-        .config
-        .lock()
-        .map_err(|e| format!("Failed to lock config: {}", e))?;
+    let config = state.config.lock().map_err(lock_err("config"))?;
     Ok(config.profiles.iter().map(ProfileInfo::from).collect())
 }
 
 #[tauri::command]
 pub fn add_profile(state: State<AppState>, profile: Profile) -> Result<(), String> {
-    let mut config = state
-        .config
-        .lock()
-        .map_err(|e| format!("Failed to lock config: {}", e))?;
-
     // Validate config directory for account-type profiles
     if profile.source_type != "api" {
         let dir = std::path::Path::new(&profile.config_dir);
@@ -71,29 +76,10 @@ pub fn add_profile(state: State<AppState>, profile: Profile) -> Result<(), Strin
         }
     }
 
-    // Create and register the provider
-    let provider: Box<dyn Provider> = match (profile.provider_type.as_str(), profile.source_type.as_str()) {
-        ("claude", "api") => {
-            let key = profile.api_key.as_ref()
-                .ok_or_else(|| "API key is required for API source type".to_string())?;
-            Box::new(ClaudeApiProvider::new(key.clone()))
-        }
-        ("claude", _) => Box::new(ClaudeProvider::new(profile.config_dir.clone().into())),
-        ("codex", _) => Box::new(CodexProvider::new(profile.config_dir.clone().into())),
-        ("gemini", _) => Box::new(GeminiProvider::new(profile.config_dir.clone().into())),
-        ("zai", "api") => {
-            let key = profile.api_key.as_ref()
-                .ok_or_else(|| "API key is required for z.ai API source type".to_string())?;
-            Box::new(ZaiApiProvider::new(key.clone()))
-        }
-        ("zai", _) => Box::new(ZaiProvider::new(profile.config_dir.clone().into())),
-        (other, _) => return Err(format!("Unknown provider type: {}", other)),
-    };
+    let provider = providers::create_provider(&profile)?;
 
-    let mut providers = state
-        .providers
-        .lock()
-        .map_err(|e| format!("Failed to lock providers: {}", e))?;
+    let mut config = state.config.lock().map_err(lock_err("config"))?;
+    let mut providers = state.providers.lock().map_err(lock_err("providers"))?;
 
     providers.insert(profile.id.clone(), provider);
     config.profiles.push(profile);
@@ -104,15 +90,8 @@ pub fn add_profile(state: State<AppState>, profile: Profile) -> Result<(), Strin
 
 #[tauri::command]
 pub fn remove_profile(state: State<AppState>, id: String) -> Result<(), String> {
-    let mut config = state
-        .config
-        .lock()
-        .map_err(|e| format!("Failed to lock config: {}", e))?;
-
-    let mut providers = state
-        .providers
-        .lock()
-        .map_err(|e| format!("Failed to lock providers: {}", e))?;
+    let mut config = state.config.lock().map_err(lock_err("config"))?;
+    let mut providers = state.providers.lock().map_err(lock_err("providers"))?;
 
     config.profiles.retain(|p| p.id != id);
     providers.remove(&id);
@@ -121,21 +100,15 @@ pub fn remove_profile(state: State<AppState>, id: String) -> Result<(), String> 
     Ok(())
 }
 
-// The data commands touch the filesystem and the network. `(async)` runs them on
-// the async runtime instead of the main thread, which would otherwise stall the
-// UI and the tray for the duration of every poll.
+// --- Usage data ---
+//
+// These commands touch the filesystem and the network. `(async)` runs them on
+// the async runtime instead of the main thread, which would otherwise stall
+// the UI and the tray for the duration of every poll.
+
 #[tauri::command(async)]
 pub fn get_usage_stats(state: State<AppState>, profile_id: String) -> Result<UsageStats, String> {
-    let providers = state
-        .providers
-        .lock()
-        .map_err(|e| format!("Failed to lock providers: {}", e))?;
-
-    let provider = providers
-        .get(&profile_id)
-        .ok_or_else(|| format!("Profile not found: {}", profile_id))?;
-
-    provider.get_usage_stats()
+    provider_for(&state, &profile_id)?.get_usage_stats()
 }
 
 #[tauri::command(async)]
@@ -143,16 +116,7 @@ pub fn get_active_sessions(
     state: State<AppState>,
     profile_id: String,
 ) -> Result<Vec<Session>, String> {
-    let providers = state
-        .providers
-        .lock()
-        .map_err(|e| format!("Failed to lock providers: {}", e))?;
-
-    let provider = providers
-        .get(&profile_id)
-        .ok_or_else(|| format!("Profile not found: {}", profile_id))?;
-
-    provider.get_active_sessions()
+    provider_for(&state, &profile_id)?.get_active_sessions()
 }
 
 #[tauri::command(async)]
@@ -161,16 +125,7 @@ pub fn get_daily_usage(
     profile_id: String,
     days: u32,
 ) -> Result<Vec<DailyUsage>, String> {
-    let providers = state
-        .providers
-        .lock()
-        .map_err(|e| format!("Failed to lock providers: {}", e))?;
-
-    let provider = providers
-        .get(&profile_id)
-        .ok_or_else(|| format!("Profile not found: {}", profile_id))?;
-
-    provider.get_daily_usage(days)
+    provider_for(&state, &profile_id)?.get_daily_usage(days)
 }
 
 #[tauri::command(async)]
@@ -179,71 +134,28 @@ pub fn get_session_history(
     profile_id: String,
     limit: u32,
 ) -> Result<Vec<Session>, String> {
-    let providers = state
-        .providers
-        .lock()
-        .map_err(|e| format!("Failed to lock providers: {}", e))?;
-
-    let provider = providers
-        .get(&profile_id)
-        .ok_or_else(|| format!("Profile not found: {}", profile_id))?;
-
-    provider.get_session_history(limit)
-}
-
-#[tauri::command]
-pub fn get_settings(state: State<AppState>) -> Result<AppSettings, String> {
-    let config = state
-        .config
-        .lock()
-        .map_err(|e| format!("Failed to lock config: {}", e))?;
-    Ok(config.settings.clone())
-}
-
-#[tauri::command]
-pub fn update_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
-    let mut config = state
-        .config
-        .lock()
-        .map_err(|e| format!("Failed to lock config: {}", e))?;
-
-    config.settings = settings;
-    profile::save_config(&config)?;
-
-    Ok(())
+    provider_for(&state, &profile_id)?.get_session_history(limit)
 }
 
 #[tauri::command(async)]
 pub fn get_all_usage_stats(state: State<AppState>) -> Result<Vec<UsageStats>, String> {
-    let config = state
-        .config
-        .lock()
-        .map_err(|e| format!("Failed to lock config: {}", e))?;
+    // Snapshot the enabled providers first so neither lock is held while the
+    // providers do their (potentially slow) reads.
+    let snapshot: Vec<Arc<dyn Provider>> = {
+        let config = state.config.lock().map_err(lock_err("config"))?;
+        let providers = state.providers.lock().map_err(lock_err("providers"))?;
+        config
+            .profiles
+            .iter()
+            .filter(|p| p.enabled)
+            .filter_map(|p| providers.get(&p.id).cloned())
+            .collect()
+    };
 
-    let providers = state
-        .providers
-        .lock()
-        .map_err(|e| format!("Failed to lock providers: {}", e))?;
-
-    let mut all_stats = Vec::new();
-
-    for profile in &config.profiles {
-        if !profile.enabled {
-            continue;
-        }
-
-        if let Some(provider) = providers.get(&profile.id) {
-            match provider.get_usage_stats() {
-                Ok(stats) => all_stats.push(stats),
-                Err(_) => {
-                    // Skip providers that fail to load stats
-                    continue;
-                }
-            }
-        }
-    }
-
-    Ok(all_stats)
+    Ok(snapshot
+        .iter()
+        .filter_map(|provider| provider.get_usage_stats().ok())
+        .collect())
 }
 
 /// `force` skips the cache and any failure backoff, for an explicit refresh.
@@ -257,22 +169,36 @@ pub fn get_rate_limit_status(
         alerts::forget_cached_limit(&profile_id);
     }
 
-    let config = state
-        .config
-        .lock()
-        .map_err(|e| format!("Failed to lock config: {}", e))?;
-
-    let profile = config
-        .profiles
-        .iter()
-        .find(|p| p.id == profile_id)
-        .ok_or_else(|| format!("Profile not found: {}", profile_id))?;
-
-    let profile = profile.clone();
-    drop(config);
+    let profile = {
+        let config = state.config.lock().map_err(lock_err("config"))?;
+        config
+            .profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .cloned()
+            .ok_or_else(|| format!("Profile not found: {}", profile_id))?
+    };
 
     Ok(alerts::rate_limit_for_profile(&profile))
 }
+
+// --- Settings ---
+
+#[tauri::command]
+pub fn get_settings(state: State<AppState>) -> Result<AppSettings, String> {
+    let config = state.config.lock().map_err(lock_err("config"))?;
+    Ok(config.settings.clone())
+}
+
+#[tauri::command]
+pub fn update_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
+    let mut config = state.config.lock().map_err(lock_err("config"))?;
+    config.settings = settings;
+    profile::save_config(&config)?;
+    Ok(())
+}
+
+// --- Validation ---
 
 #[tauri::command(async)]
 pub fn validate_api_key(api_key: String, provider_type: Option<String>) -> Result<bool, String> {

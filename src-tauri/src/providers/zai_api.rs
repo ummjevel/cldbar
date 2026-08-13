@@ -1,12 +1,10 @@
 use super::{DailyUsage, ModelUsage, Provider, RateLimitStatus, RateLimitWindow, Session, UsageStats};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 pub struct ZaiApiProvider {
     api_key: String,
     base_url: String,
-    config_dir: PathBuf,
 }
 
 // --- Deserialization types for z.ai monitoring API ---
@@ -51,11 +49,7 @@ impl ZaiApiProvider {
     pub fn new(api_key: String) -> Self {
         // Detect platform from API key or default to global
         let base_url = "https://api.z.ai".to_string();
-        Self {
-            api_key,
-            base_url,
-            config_dir: PathBuf::new(),
-        }
+        Self { api_key, base_url }
     }
 
     fn client(&self) -> Result<&'static reqwest::blocking::Client, String> {
@@ -164,18 +158,6 @@ impl ZaiApiProvider {
 }
 
 impl Provider for ZaiApiProvider {
-    fn name(&self) -> &str {
-        "z.ai"
-    }
-
-    fn provider_type(&self) -> &str {
-        "zai"
-    }
-
-    fn config_dir(&self) -> &PathBuf {
-        &self.config_dir
-    }
-
     fn get_usage_stats(&self) -> Result<UsageStats, String> {
         let entries = self.fetch_model_usage().unwrap_or_default();
 

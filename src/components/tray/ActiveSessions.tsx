@@ -39,7 +39,7 @@ export function ActiveSessions({ sessions, sourceType }: Props) {
           >
             <Circle
               size={6}
-              fill={session.isActive ? "#22c55e" : "#6b6b80"}
+              fill={session.isActive ? "var(--color-success)" : "var(--color-muted)"}
               className={session.isActive ? "text-success" : "text-muted"}
             />
             <div className="flex-1 min-w-0">

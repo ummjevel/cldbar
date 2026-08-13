@@ -6,15 +6,9 @@ mod providers;
 use alerts::AlertState;
 use commands::AppState;
 use profile::load_config;
-use providers::claude::ClaudeProvider;
-use providers::claude_api::ClaudeApiProvider;
-use providers::codex::CodexProvider;
-use providers::gemini::GeminiProvider;
-use providers::zai::ZaiProvider;
-use providers::zai_api::ZaiApiProvider;
 use providers::Provider;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
@@ -112,34 +106,13 @@ fn position_popup(window: &tauri::WebviewWindow, tray: &tauri::tray::TrayIcon) {
 pub fn run() {
     let config = load_config().unwrap_or_else(|_| profile::default_config());
 
-    // Create providers from config
-    let mut provider_map: HashMap<String, Box<dyn Provider>> = HashMap::new();
-    for p in &config.profiles {
-        if !p.enabled {
-            continue;
+    // Create providers from config. A profile that cannot be built (unknown
+    // type, missing API key) is skipped rather than failing startup.
+    let mut provider_map: HashMap<String, Arc<dyn Provider>> = HashMap::new();
+    for p in config.profiles.iter().filter(|p| p.enabled) {
+        if let Ok(provider) = providers::create_provider(p) {
+            provider_map.insert(p.id.clone(), provider);
         }
-        let provider: Box<dyn Provider> = match (p.provider_type.as_str(), p.source_type.as_str()) {
-            ("claude", "api") => {
-                if let Some(ref key) = p.api_key {
-                    Box::new(ClaudeApiProvider::new(key.clone()))
-                } else {
-                    continue;
-                }
-            }
-            ("claude", _) => Box::new(ClaudeProvider::new(p.config_dir.clone().into())),
-            ("codex", _) => Box::new(CodexProvider::new(p.config_dir.clone().into())),
-            ("gemini", _) => Box::new(GeminiProvider::new(p.config_dir.clone().into())),
-            ("zai", "api") => {
-                if let Some(ref key) = p.api_key {
-                    Box::new(ZaiApiProvider::new(key.clone()))
-                } else {
-                    continue;
-                }
-            }
-            ("zai", _) => Box::new(ZaiProvider::new(p.config_dir.clone().into())),
-            _ => continue,
-        };
-        provider_map.insert(p.id.clone(), provider);
     }
 
     tauri::Builder::default()

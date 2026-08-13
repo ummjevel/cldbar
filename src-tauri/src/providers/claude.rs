@@ -342,18 +342,6 @@ impl ClaudeProvider {
 }
 
 impl Provider for ClaudeProvider {
-    fn name(&self) -> &str {
-        "Claude"
-    }
-
-    fn provider_type(&self) -> &str {
-        "claude"
-    }
-
-    fn config_dir(&self) -> &PathBuf {
-        &self.config_dir
-    }
-
     fn get_usage_stats(&self) -> Result<UsageStats, String> {
         let cache = self.read_stats_cache().unwrap_or(StatsCache {
             model_usage: HashMap::new(),

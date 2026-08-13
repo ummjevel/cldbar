@@ -462,11 +462,17 @@ fn run_check(app: &AppHandle) -> u64 {
         ));
     }
 
-    // Drop dedup keys whose limit period rolled over, so the next period alerts again.
+    // Drop dedup keys whose limit period rolled over, so the next period alerts
+    // again. Only keys of profiles that actually reported this pass are judged:
+    // a profile that is offline or rate limited has no live periods, and pruning
+    // its keys would re-fire every alert once it comes back.
+    let reported: HashSet<&str> = statuses.iter().map(|(p, _)| p.id.as_str()).collect();
     fired.retain(|key| {
-        live_periods
-            .iter()
-            .any(|prefix| key.starts_with(prefix.as_str()))
+        let profile_id = key.split('|').next().unwrap_or("");
+        !reported.contains(profile_id)
+            || live_periods
+                .iter()
+                .any(|prefix| key.starts_with(prefix.as_str()))
     });
     drop(fired);
 

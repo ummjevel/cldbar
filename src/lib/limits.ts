@@ -19,12 +19,6 @@ export const limitWindowRoles: Record<LimitWindowKey, string> = {
   sevenDayOpus: "Weekly · Opus",
 };
 
-export const limitWindowDescriptions: Record<LimitWindowKey, string> = {
-  fiveHour: "Rolling 5-hour session limit",
-  sevenDay: "Weekly limit across all models",
-  sevenDayOpus: "Weekly limit for Opus models",
-};
-
 export interface LimitWindowEntry {
   key: LimitWindowKey;
   window: RateLimitWindow;
@@ -129,13 +123,4 @@ export function formatResetClock(resetsAt: string | null, now: number = Date.now
 
   const day = target.toLocaleDateString([], { weekday: "short" });
   return `${day} ${time}`;
-}
-
-/** Minutes left before a reset, or null when unknown / already past. */
-export function minutesUntilReset(resetsAt: string | null, now: number = Date.now()): number | null {
-  if (!resetsAt) return null;
-  const target = new Date(resetsAt).getTime();
-  if (isNaN(target)) return null;
-  const diff = target - now;
-  return diff <= 0 ? null : Math.floor(diff / 60000);
 }

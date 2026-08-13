@@ -1,32 +1,50 @@
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { TrendingUp } from "lucide-react";
-import { formatTokens } from "../../lib/format";
+import { formatTokens, formatShortDate, localDateKey } from "../../lib/format";
 import { providerColors } from "../../lib/colors";
 import type { DailyUsage, ProviderType } from "../../lib/types";
 
 interface Props {
   data: DailyUsage[];
   providerType: ProviderType;
+  loading?: boolean;
 }
 
-export function WeeklySparkline({ data, providerType }: Props) {
+/**
+ * Today's total with the recent daily trend behind it.
+ *
+ * The headline number is genuinely today's tokens (matched by local date, then
+ * UTC, since providers stamp their logs differently). Providers return daily
+ * rows newest-first, so the chart re-sorts them to make time flow left→right.
+ */
+export function UsageTrend({ data, providerType, loading }: Props) {
   const colors = providerColors[providerType];
-  const total = data.reduce((sum, d) => sum + d.inputTokens + d.outputTokens, 0);
-  const avg = data.length > 0 ? total / data.length : 0;
+  const days = [...data].sort((a, b) => (a.date < b.date ? -1 : 1));
 
-  const chartData = data.map(d => ({
+  const total = days.reduce((sum, d) => sum + d.inputTokens + d.outputTokens, 0);
+  const avg = days.length > 0 ? total / days.length : 0;
+
+  const todayKeys = [localDateKey(), new Date().toISOString().slice(0, 10)];
+  const today = days.find((d) => todayKeys.includes(d.date));
+  const todayTokens = today ? today.inputTokens + today.outputTokens : 0;
+
+  const chartData = days.map((d) => ({
     date: d.date,
     tokens: d.inputTokens + d.outputTokens,
   }));
+  const first = days[0];
+  const last = days[days.length - 1];
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-text-secondary">7-Day Trend</span>
-        <span className="text-[10px] text-muted tabular-nums">
-          {formatTokens(avg)} avg/day
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-xs font-medium text-text-secondary">Today's Usage</span>
+        <span className="text-lg font-bold text-text tabular-nums">
+          {loading && days.length === 0 ? "—" : formatTokens(todayTokens)}
+          <span className="text-xs font-normal text-muted ml-1">tokens</span>
         </span>
       </div>
+
       <div className="h-12 rounded-lg">
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
@@ -55,6 +73,14 @@ export function WeeklySparkline({ data, providerType }: Props) {
           </div>
         )}
       </div>
+
+      {first && last && (
+        <div className="flex items-center justify-between mt-1 text-[10px] text-muted tabular-nums">
+          <span>{formatShortDate(first.date)}</span>
+          <span>{formatTokens(avg)} avg/day</span>
+          <span>{todayKeys.includes(last.date) ? "Today" : formatShortDate(last.date)}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,24 +1,61 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useCallback, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { PhysicalSize } from "@tauri-apps/api/dpi";
 import { ProviderTabs } from "./ProviderTabs";
-import { UsageMeter } from "./UsageMeter";
 import { StatCards } from "./StatCards";
 import { ActiveSessions } from "./ActiveSessions";
-import { WeeklySparkline } from "./WeeklySparkline";
+import { UsageTrend } from "./UsageTrend";
 import { SettingsPanel } from "./SettingsPanel";
 import { AlertSettingsPanel } from "./AlertSettingsPanel";
 import { AddProfileForm } from "./AddProfileForm";
 import { LimitWindows } from "./LimitWindows";
-import { useProfiles, useUsageStats, useActiveSessions, useDailyUsage, useRateLimitStatus, forgetProfile } from "../../hooks/useProviderData";
-import { isDialogOpen, isDragging, startManualDrag } from "../../lib/windowState";
+import {
+  useProfiles,
+  useUsageStats,
+  useActiveSessions,
+  useDailyUsage,
+  useRateLimitStatus,
+  forgetProfile,
+} from "../../hooks/useProviderData";
+import { useTrayWindow } from "../../hooks/useTrayWindow";
+import { startManualDrag } from "../../lib/windowState";
 import { providerLabels } from "../../lib/colors";
 import type { ProviderType, SourceType } from "../../lib/types";
 
 type View = "main" | "settings" | "addProfile" | "alerts";
+
+/** Where Escape (and the back button) leads from each sub-view. */
+const BACK_TARGET: Record<Exclude<View, "main">, View> = {
+  settings: "main",
+  addProfile: "settings",
+  alerts: "settings",
+};
+
+/** Logical window height per view; the main view grows with its session list. */
+function viewHeight(view: View, sessionCount: number): number {
+  if (view === "alerts") return 620;
+  if (view !== "main") return 490;
+  if (sessionCount <= 1) return 490;
+  return sessionCount === 2 ? 530 : 600;
+}
+
+/** Shared slide-in used by every view of the popup. Give each one a `key` so
+    AnimatePresence can run its exit animation. */
+function Panel({ id, children, className = "h-full" }: { id: string; children: ReactNode; className?: string }) {
+  const dir = id === "main" ? -20 : 20;
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: dir }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: dir }}
+      transition={{ duration: 0.15 }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 export function TrayPopup() {
   const { profiles, refresh: refreshProfiles } = useProfiles();
@@ -26,16 +63,14 @@ export function TrayPopup() {
   const [view, setView] = useState<View>("main");
 
   // Auto-select first profile
-  useEffect(() => {
-    if (profiles.length > 0 && !activeProfileId) {
-      setActiveProfileId(profiles[0].id);
-    }
-  }, [profiles, activeProfileId]);
+  if (profiles.length > 0 && !activeProfileId) {
+    setActiveProfileId(profiles[0].id);
+  }
 
-  const activeProfile = profiles.find(p => p.id === activeProfileId);
-  const { stats, loading, refresh: refreshStats } = useUsageStats(activeProfileId);
+  const activeProfile = profiles.find((p) => p.id === activeProfileId);
+  const { stats, loading: statsLoading, refresh: refreshStats } = useUsageStats(activeProfileId);
   const { sessions, refresh: refreshSessions } = useActiveSessions(activeProfileId);
-  const { data: dailyUsage, refresh: refreshDaily } = useDailyUsage(activeProfileId, 7);
+  const { data: dailyUsage, loading: dailyLoading, refresh: refreshDaily } = useDailyUsage(activeProfileId, 7);
   const {
     status: rateLimitStatus,
     loading: limitsLoading,
@@ -43,67 +78,7 @@ export function TrayPopup() {
     forceRefresh: forceRefreshRateLimits,
   } = useRateLimitStatus(activeProfileId);
 
-  // Assigned below, once refreshAll exists. Held in a ref so the window
-  // listeners are subscribed once rather than on every profile change.
-  const refreshAllRef = useRef<() => void>(() => {});
-
-  // Hide window on blur (debounced to allow drag/dialog interactions), and
-  // re-read on the way back in: the popup being opened is the moment the
-  // numbers actually need to be current.
-  useEffect(() => {
-    const win = getCurrentWindow();
-    let blurTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const unlistenBlur = win.listen("tauri://blur", () => {
-      if (!isDialogOpen() && !isDragging()) {
-        blurTimeout = setTimeout(() => win.hide(), 150);
-      }
-    });
-    const unlistenFocus = win.listen("tauri://focus", () => {
-      if (blurTimeout) {
-        // Returning from a drag or dialog, not a fresh open.
-        clearTimeout(blurTimeout);
-        blurTimeout = null;
-        return;
-      }
-      refreshAllRef.current();
-    });
-
-    return () => {
-      unlistenBlur.then(fn => fn());
-      unlistenFocus.then(fn => fn());
-      if (blurTimeout) clearTimeout(blurTimeout);
-    };
-  }, []);
-
-  // Dynamic window height (top-left stays fixed, only height changes). The main
-  // view sizes to its session count; the alerts panel needs the extra room.
-  useEffect(() => {
-    const win = getCurrentWindow();
-    const count = sessions.length;
-    const targetH =
-      view === "alerts" ? 620
-      : view !== "main" ? 490
-      : count <= 1 ? 490 : count === 2 ? 530 : 600;
-    const scale = window.devicePixelRatio || 1;
-    const W = Math.round(380 * scale);
-    const H = Math.round(targetH * scale);
-
-    (async () => {
-      try {
-        await win.setSize(new PhysicalSize(W, H));
-      } catch (e) {
-        console.error("Window resize failed:", e);
-      }
-    })();
-  }, [sessions.length, view]);
-
-  /**
-   * Re-read on open. The limit lookup goes through the backend's shared cache,
-   * so opening the popup repeatedly does not add network calls; the local file
-   * reads are cheap. This replaced a five-second poll that was re-reading the
-   * logs and re-hitting the usage APIs for numbers that move far slower.
-   */
+  /** Re-read everything; used when the popup is (re)opened. */
   const refreshAll = useCallback(() => {
     refreshStats();
     refreshSessions();
@@ -119,25 +94,37 @@ export function TrayPopup() {
     forceRefreshRateLimits();
   }, [refreshStats, refreshSessions, refreshDaily, forceRefreshRateLimits]);
 
-  refreshAllRef.current = refreshAll;
+  useTrayWindow({
+    onOpen: refreshAll,
+    onEscape: () => {
+      if (view === "main") return false;
+      setView(BACK_TARGET[view]);
+      return true;
+    },
+    height: viewHeight(view, sessions.length),
+  });
 
+  const refreshing = statsLoading || limitsLoading;
   const sourceType: SourceType = (activeProfile?.sourceType as SourceType) || "account";
-  const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0;
+  const providerType = (activeProfile?.providerType as ProviderType) || "claude";
 
-  const handleRemoveProfile = useCallback(async (id: string) => {
-    try {
-      await invoke("remove_profile", { id });
-      forgetProfile(id);
-      const updated = await refreshProfiles();
-      if (activeProfileId === id) {
-        // Select the next available profile, or null if none
-        const remaining = (updated ?? profiles).filter(p => p.id !== id);
-        setActiveProfileId(remaining.length > 0 ? remaining[0].id : null);
+  const handleRemoveProfile = useCallback(
+    async (id: string) => {
+      try {
+        await invoke("remove_profile", { id });
+        forgetProfile(id);
+        const updated = await refreshProfiles();
+        if (activeProfileId === id) {
+          // Select the next available profile, or null if none
+          const remaining = (updated ?? profiles).filter((p) => p.id !== id);
+          setActiveProfileId(remaining.length > 0 ? remaining[0].id : null);
+        }
+      } catch (e) {
+        console.error("Failed to remove profile:", e);
       }
-    } catch (e) {
-      console.error("Failed to remove profile:", e);
-    }
-  }, [activeProfileId, profiles, refreshProfiles]);
+    },
+    [activeProfileId, profiles, refreshProfiles],
+  );
 
   const handleProfileAdded = useCallback(async () => {
     await refreshProfiles();
@@ -155,14 +142,7 @@ export function TrayPopup() {
     >
       <AnimatePresence mode="wait">
         {view === "settings" ? (
-          <motion.div
-            key="settings"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.15 }}
-            className="h-full"
-          >
+          <Panel key="settings" id="settings">
             <SettingsPanel
               profiles={profiles}
               onBack={() => setView("main")}
@@ -170,58 +150,49 @@ export function TrayPopup() {
               onRemoveProfile={handleRemoveProfile}
               onOpenAlerts={() => setView("alerts")}
             />
-          </motion.div>
+          </Panel>
         ) : view === "alerts" ? (
-          <motion.div
-            key="alerts"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.15 }}
-            className="h-full"
-          >
-            <AlertSettingsPanel
-              profiles={profiles}
-              onBack={() => setView("settings")}
-            />
-          </motion.div>
+          <Panel key="alerts" id="alerts">
+            <AlertSettingsPanel profiles={profiles} onBack={() => setView("settings")} />
+          </Panel>
         ) : view === "addProfile" ? (
-          <motion.div
-            key="addProfile"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.15 }}
-            className="h-full"
-          >
-            <AddProfileForm
-              onBack={() => setView("settings")}
-              onAdded={handleProfileAdded}
-            />
-          </motion.div>
+          <Panel key="addProfile" id="addProfile">
+            <AddProfileForm onBack={() => setView("settings")} onAdded={handleProfileAdded} />
+          </Panel>
         ) : (
-          <motion.div
-            key="main"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.15 }}
-            className="h-full flex flex-col"
-          >
+          <Panel key="main" id="main" className="h-full flex flex-col">
             {/* Title bar - draggable */}
             <div
               className="flex items-center justify-between px-4 py-2.5 border-b border-border cursor-grab active:cursor-grabbing"
               onMouseDown={startManualDrag}
             >
               <div className="flex items-center gap-2">
-                <svg width="16" height="16" viewBox="0 0 100 100">
-                  <circle fill="none" stroke="#1a1a1e" strokeWidth="20" cx="50" cy="50" r="40"/>
-                  <circle fill="none" stroke="#e87b35" strokeWidth="20" cx="50" cy="50" r="40"
-                    strokeDasharray="150 251.3" strokeDashoffset="0"
-                    transform="rotate(-90 50 50)" opacity="0.95"/>
-                  <circle fill="none" stroke="#4285f4" strokeWidth="20" cx="50" cy="50" r="40"
-                    strokeDasharray="93 251.3" strokeDashoffset="-155"
-                    transform="rotate(-90 50 50)" opacity="0.95"/>
+                <svg width="16" height="16" viewBox="0 0 100 100" aria-hidden="true">
+                  <circle fill="none" stroke="var(--color-border-light)" strokeWidth="20" cx="50" cy="50" r="40" />
+                  <circle
+                    fill="none"
+                    stroke="#e87b35"
+                    strokeWidth="20"
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    strokeDasharray="150 251.3"
+                    strokeDashoffset="0"
+                    transform="rotate(-90 50 50)"
+                    opacity="0.95"
+                  />
+                  <circle
+                    fill="none"
+                    stroke="#4285f4"
+                    strokeWidth="20"
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    strokeDasharray="93 251.3"
+                    strokeDashoffset="-155"
+                    transform="rotate(-90 50 50)"
+                    opacity="0.95"
+                  />
                 </svg>
                 <span className="text-sm font-semibold text-text tracking-wide">cldbar</span>
               </div>
@@ -229,18 +200,17 @@ export function TrayPopup() {
                 <button
                   className="p-1.5 rounded-md hover:bg-card-hover transition-colors disabled:opacity-60"
                   onClick={forceRefreshAll}
-                  disabled={loading}
+                  disabled={refreshing}
                   aria-label="Refresh"
                   title="Refresh"
                 >
-                  <RefreshCw
-                    size={13}
-                    className={`text-muted ${loading ? "animate-spin" : ""}`}
-                  />
+                  <RefreshCw size={13} className={`text-muted ${refreshing ? "animate-spin" : ""}`} />
                 </button>
                 <button
                   className="p-1.5 rounded-md hover:bg-card-hover transition-colors"
                   onClick={() => setView("settings")}
+                  aria-label="Settings"
+                  title="Settings"
                 >
                   <Settings size={13} className="text-muted" />
                 </button>
@@ -249,11 +219,7 @@ export function TrayPopup() {
 
             {/* Provider tabs (hidden when no profiles) */}
             {profiles.length > 0 && (
-              <ProviderTabs
-                profiles={profiles}
-                activeProfileId={activeProfileId}
-                onSelect={setActiveProfileId}
-              />
+              <ProviderTabs profiles={profiles} activeProfileId={activeProfileId} onSelect={setActiveProfileId} />
             )}
 
             {/* Content area with scroll */}
@@ -261,8 +227,8 @@ export function TrayPopup() {
               {!activeProfile ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4">
                   <div className="flex flex-col items-center gap-1">
-                    <svg width="32" height="32" viewBox="0 0 100 100" className="opacity-30">
-                      <circle fill="none" stroke="currentColor" strokeWidth="16" cx="50" cy="50" r="40"/>
+                    <svg width="32" height="32" viewBox="0 0 100 100" className="opacity-30" aria-hidden="true">
+                      <circle fill="none" stroke="currentColor" strokeWidth="16" cx="50" cy="50" r="40" />
                     </svg>
                     <p className="text-xs text-muted mt-2">No profiles configured</p>
                     <p className="text-[10px] text-muted/60">Add a provider to start tracking usage</p>
@@ -275,51 +241,33 @@ export function TrayPopup() {
                   </button>
                 </div>
               ) : (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeProfileId}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex flex-col gap-3 min-h-full"
-                  >
-                    {/* What's left and when it resets — the reason the popup gets opened */}
-                    <LimitWindows
-                      status={rateLimitStatus}
-                      providerLabel={providerLabels[(activeProfile.providerType as ProviderType) || "claude"]}
-                      loading={limitsLoading}
-                      sourceType={sourceType}
-                    />
+                <motion.div
+                  key={activeProfileId}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-col gap-3 min-h-full"
+                >
+                  {/* What's left and when it resets — the reason the popup gets opened */}
+                  <LimitWindows
+                    status={rateLimitStatus}
+                    providerLabel={providerLabels[providerType]}
+                    loading={limitsLoading}
+                    sourceType={sourceType}
+                  />
 
-                    {/* Usage meter */}
-                    <UsageMeter
-                      used={totalTokens}
-                      providerType={(activeProfile.providerType as ProviderType) || "claude"}
-                      loading={loading}
-                    />
+                  {/* Today's tokens + recent trend */}
+                  <UsageTrend data={dailyUsage} providerType={providerType} loading={dailyLoading} />
 
-                    {/* Stat cards */}
-                    <StatCards
-                      stats={stats}
-                      providerType={(activeProfile.providerType as ProviderType) || "claude"}
-                      sourceType={sourceType}
-                    />
+                  {/* All-time stat cards */}
+                  <StatCards stats={stats} providerType={providerType} sourceType={sourceType} />
 
-                    {/* Active sessions */}
-                    <ActiveSessions sessions={sessions} sourceType={sourceType} />
-
-                    {/* Weekly sparkline */}
-                    <WeeklySparkline
-                        data={dailyUsage}
-                        providerType={(activeProfile.providerType as ProviderType) || "claude"}
-                      />
-
-                  </motion.div>
-                </AnimatePresence>
+                  {/* Active sessions */}
+                  <ActiveSessions sessions={sessions} sourceType={sourceType} />
+                </motion.div>
               )}
             </div>
-          </motion.div>
+          </Panel>
         )}
       </AnimatePresence>
     </div>

@@ -46,18 +46,6 @@ impl ZaiProvider {
 }
 
 impl Provider for ZaiProvider {
-    fn name(&self) -> &str {
-        "z.ai"
-    }
-
-    fn provider_type(&self) -> &str {
-        "zai"
-    }
-
-    fn config_dir(&self) -> &PathBuf {
-        &self.config_dir
-    }
-
     fn get_usage_stats(&self) -> Result<UsageStats, String> {
         let conn = match self.open_db() {
             Some(c) => c,
@@ -238,13 +226,17 @@ impl Provider for ZaiProvider {
             None => return Ok(Vec::new()),
         };
 
+        // Recency is decided inside SQLite: the stored timestamps and
+        // `datetime('now')` share its format, while a timestamp rendered in
+        // Rust (RFC 3339, with a 'T') would not compare correctly as a string.
         let mut stmt = conn
             .prepare(
                 "SELECT s.id, s.name, s.working_directory, \
                  COALESCE(s.updated_at, s.created_at, '') as last_active, \
                  COALESCE(m.model, 'unknown') as model, \
                  COALESCE(m.total_tokens, 0) as tokens_used, \
-                 COALESCE(m.msg_count, 0) as msg_count \
+                 COALESCE(m.msg_count, 0) as msg_count, \
+                 COALESCE(s.updated_at, s.created_at) >= datetime('now', '-30 minutes') as is_active \
                  FROM sessions s \
                  LEFT JOIN ( \
                      SELECT session_id, \
@@ -258,14 +250,10 @@ impl Provider for ZaiProvider {
             )
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
-        let now_str = chrono::Utc::now().to_rfc3339();
-        let thirty_min_ago = (chrono::Utc::now() - chrono::Duration::minutes(30)).to_rfc3339();
-
         let sessions = stmt
             .query_map([limit], |row| {
                 let last_active: String = row.get::<_, String>(3).unwrap_or_default();
-                let is_active = last_active.as_str() >= thirty_min_ago.as_str()
-                    && last_active.as_str() <= now_str.as_str();
+                let is_active = row.get::<_, bool>(7).unwrap_or(false);
 
                 Ok(Session {
                     id: row.get::<_, String>(0)?,

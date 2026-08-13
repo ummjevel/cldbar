@@ -1,7 +1,6 @@
 use super::{DailyUsage, ModelUsage, Provider, Session, UsageStats};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -370,21 +369,6 @@ impl ClaudeApiProvider {
 }
 
 impl Provider for ClaudeApiProvider {
-    fn name(&self) -> &str {
-        "Claude (API)"
-    }
-
-    fn provider_type(&self) -> &str {
-        "claude"
-    }
-
-    fn config_dir(&self) -> &PathBuf {
-        // API provider doesn't use a config directory; return a dummy path
-        // This is safe because no caller reads files from this path for API providers
-        static DUMMY: std::sync::LazyLock<PathBuf> = std::sync::LazyLock::new(|| PathBuf::from(""));
-        &DUMMY
-    }
-
     fn get_usage_stats(&self) -> Result<UsageStats, String> {
         self.build_usage_stats()
     }

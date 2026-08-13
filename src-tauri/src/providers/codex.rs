@@ -534,18 +534,6 @@ impl CodexProvider {
 }
 
 impl Provider for CodexProvider {
-    fn name(&self) -> &str {
-        "Codex"
-    }
-
-    fn provider_type(&self) -> &str {
-        "codex"
-    }
-
-    fn config_dir(&self) -> &PathBuf {
-        &self.config_dir
-    }
-
     fn get_usage_stats(&self) -> Result<UsageStats, String> {
         let summaries = self.summaries();
 

@@ -146,30 +146,6 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
           </div>
         </div>
 
-        {/* Source type toggle - temporarily hidden, only account mode supported
-        <div>
-          <label className="text-[10px] font-medium text-muted uppercase tracking-wider mb-1.5 block">
-            Source
-          </label>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => { if (supportsAccount) { setSourceType("account"); setError(null); } }}
-              disabled={!supportsAccount}
-              className="flex-1 px-2 py-2 rounded-lg text-xs font-medium border transition-all"
-            >
-              Account{!supportsAccount && " (N/A)"}
-            </button>
-            <button
-              onClick={() => { if (supportsApi) { setSourceType("api"); setError(null); } }}
-              disabled={!supportsApi}
-              className="flex-1 px-2 py-2 rounded-lg text-xs font-medium border transition-all"
-            >
-              API{!supportsApi && " (N/A)"}
-            </button>
-          </div>
-        </div>
-        */}
-
         {/* Name (optional) */}
         <div>
           <label className="text-[10px] font-medium text-muted uppercase tracking-wider mb-1.5 block">
@@ -205,7 +181,7 @@ export function AddProfileForm({ onBack, onAdded }: Props) {
                 disabled={validating || !apiKey.trim()}
                 className="px-3 py-2 rounded-lg text-xs font-medium border border-border bg-card hover:bg-card-hover transition-colors disabled:opacity-40"
                 style={{
-                  color: validated === true ? "#22c55e" : validated === false ? "#ef4444" : "var(--color-text-secondary)",
+                  color: validated === true ? "var(--color-success)" : validated === false ? "var(--color-danger)" : "var(--color-text-secondary)",
                 }}
               >
                 {validating ? (

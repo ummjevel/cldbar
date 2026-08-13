@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Plus, Trash2, Sun, Moon, Monitor, Bell, ChevronRight, BatteryMedium, Gauge } from "lucide-react";
 import { startManualDrag } from "../../lib/windowState";
@@ -29,6 +30,15 @@ const limitDisplays: { value: LimitDisplay; label: string; icon: typeof BatteryM
 export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile, onOpenAlerts }: Props) {
   const { settings, update } = useSettings();
 
+  // Removal is irreversible, so it takes two clicks: the first arms an inline
+  // "Remove?" confirmation that disarms itself after a moment.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!confirmingId) return;
+    const t = setTimeout(() => setConfirmingId(null), 3000);
+    return () => clearTimeout(t);
+  }, [confirmingId]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -39,6 +49,7 @@ export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile,
         <button
           onClick={onBack}
           className="p-1.5 rounded-md hover:bg-card-hover transition-colors"
+          aria-label="Back"
         >
           <ArrowLeft size={14} className="text-muted" />
         </button>
@@ -81,7 +92,7 @@ export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile,
         {/* Limit display section */}
         <div>
           <span className="text-xs font-medium text-text-secondary uppercase tracking-wider mb-2 block">
-            Limits show
+            Limit display
           </span>
           <div className="flex gap-1.5">
             {limitDisplays.map((d) => {
@@ -177,13 +188,27 @@ export function SettingsPanel({ profiles, onBack, onAddProfile, onRemoveProfile,
                     </div>
                   </div>
 
-                  {/* Delete button */}
-                  <button
-                    onClick={() => onRemoveProfile(profile.id)}
-                    className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-danger/10 transition-all"
-                  >
-                    <Trash2 size={12} className="text-danger" />
-                  </button>
+                  {/* Delete button: armed on first click, confirmed on the second */}
+                  {confirmingId === profile.id ? (
+                    <button
+                      onClick={() => {
+                        setConfirmingId(null);
+                        onRemoveProfile(profile.id);
+                      }}
+                      className="px-2 py-1 rounded-md text-[10px] font-semibold text-danger bg-danger/10 border border-danger/20 transition-colors"
+                      aria-label={`Confirm removing ${profile.name}`}
+                    >
+                      Remove?
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingId(profile.id)}
+                      className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-danger/10 transition-all"
+                      aria-label={`Remove ${profile.name}`}
+                    >
+                      <Trash2 size={12} className="text-danger" />
+                    </button>
+                  )}
                 </motion.div>
               );
             })}

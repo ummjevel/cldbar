@@ -13,10 +13,6 @@ pub struct GeminiProvider {
 
 #[derive(Debug, Deserialize)]
 struct GeminiSessionLine {
-    #[serde(default, rename = "type")]
-    line_type: Option<String>,
-    #[serde(default)]
-    id: Option<String>,
     #[serde(default)]
     tokens: Option<GeminiTokens>,
     #[serde(default)]
@@ -286,18 +282,6 @@ impl GeminiProvider {
 }
 
 impl Provider for GeminiProvider {
-    fn name(&self) -> &str {
-        "Gemini"
-    }
-
-    fn provider_type(&self) -> &str {
-        "gemini"
-    }
-
-    fn config_dir(&self) -> &PathBuf {
-        &self.config_dir
-    }
-
     fn get_usage_stats(&self) -> Result<UsageStats, String> {
         let sessions = self.all_sessions();
 

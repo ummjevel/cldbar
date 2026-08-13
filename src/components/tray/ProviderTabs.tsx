@@ -13,14 +13,6 @@ interface Props {
 export function ProviderTabs({ profiles, activeProfileId, onSelect }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  if (profiles.length === 0) {
-    return (
-      <div className="px-4 py-3 text-center text-muted text-xs">
-        No providers configured
-      </div>
-    );
-  }
-
   return (
     <div
       ref={scrollRef}
@@ -51,7 +43,6 @@ export function ProviderTabs({ profiles, activeProfileId, onSelect }: Props) {
           >
             <ProviderIcon type={profile.providerType as ProviderType} size={16} />
             <span>{profile.name}</span>
-            {/* <SourceBadge sourceType={(profile.sourceType || "account") as SourceType} /> */}
             {isActive && (
               <motion.div
                 layoutId="activeTab"
