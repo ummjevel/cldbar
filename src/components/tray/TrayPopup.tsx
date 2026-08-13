@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Settings, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -36,9 +36,20 @@ export function TrayPopup() {
   const { stats, loading, refresh: refreshStats } = useUsageStats(activeProfileId);
   const { sessions, refresh: refreshSessions } = useActiveSessions(activeProfileId);
   const { data: dailyUsage, refresh: refreshDaily } = useDailyUsage(activeProfileId, 7);
-  const { status: rateLimitStatus, loading: limitsLoading, refresh: refreshRateLimits } = useRateLimitStatus(activeProfileId);
+  const {
+    status: rateLimitStatus,
+    loading: limitsLoading,
+    refresh: refreshRateLimits,
+    forceRefresh: forceRefreshRateLimits,
+  } = useRateLimitStatus(activeProfileId);
 
-  // Hide window on blur (debounced to allow drag/dialog interactions)
+  // Assigned below, once refreshAll exists. Held in a ref so the window
+  // listeners are subscribed once rather than on every profile change.
+  const refreshAllRef = useRef<() => void>(() => {});
+
+  // Hide window on blur (debounced to allow drag/dialog interactions), and
+  // re-read on the way back in: the popup being opened is the moment the
+  // numbers actually need to be current.
   useEffect(() => {
     const win = getCurrentWindow();
     let blurTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -49,7 +60,13 @@ export function TrayPopup() {
       }
     });
     const unlistenFocus = win.listen("tauri://focus", () => {
-      if (blurTimeout) { clearTimeout(blurTimeout); blurTimeout = null; }
+      if (blurTimeout) {
+        // Returning from a drag or dialog, not a fresh open.
+        clearTimeout(blurTimeout);
+        blurTimeout = null;
+        return;
+      }
+      refreshAllRef.current();
     });
 
     return () => {
@@ -81,15 +98,28 @@ export function TrayPopup() {
     })();
   }, [sessions.length, view]);
 
-  // Each profile is loaded once and kept; the refresh button is what goes back
-  // to the backend. Polling here re-read the logs and re-hit the usage APIs
-  // every few seconds for numbers that move far slower than that.
+  /**
+   * Re-read on open. The limit lookup goes through the backend's shared cache,
+   * so opening the popup repeatedly does not add network calls; the local file
+   * reads are cheap. This replaced a five-second poll that was re-reading the
+   * logs and re-hitting the usage APIs for numbers that move far slower.
+   */
   const refreshAll = useCallback(() => {
     refreshStats();
     refreshSessions();
     refreshDaily();
     refreshRateLimits();
   }, [refreshStats, refreshSessions, refreshDaily, refreshRateLimits]);
+
+  /** The refresh button: an explicit ask, so it bypasses cache and backoff. */
+  const forceRefreshAll = useCallback(() => {
+    refreshStats();
+    refreshSessions();
+    refreshDaily();
+    forceRefreshRateLimits();
+  }, [refreshStats, refreshSessions, refreshDaily, forceRefreshRateLimits]);
+
+  refreshAllRef.current = refreshAll;
 
   const sourceType: SourceType = (activeProfile?.sourceType as SourceType) || "account";
   const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0;
@@ -198,7 +228,7 @@ export function TrayPopup() {
               <div className="flex items-center gap-1.5">
                 <button
                   className="p-1.5 rounded-md hover:bg-card-hover transition-colors disabled:opacity-60"
-                  onClick={refreshAll}
+                  onClick={forceRefreshAll}
                   disabled={loading}
                   aria-label="Refresh"
                   title="Refresh"
