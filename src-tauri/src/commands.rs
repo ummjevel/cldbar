@@ -246,8 +246,17 @@ pub fn get_all_usage_stats(state: State<AppState>) -> Result<Vec<UsageStats>, St
     Ok(all_stats)
 }
 
+/// `force` skips the cache and any failure backoff, for an explicit refresh.
 #[tauri::command(async)]
-pub fn get_rate_limit_status(state: State<AppState>, profile_id: String) -> Result<RateLimitStatus, String> {
+pub fn get_rate_limit_status(
+    state: State<AppState>,
+    profile_id: String,
+    force: Option<bool>,
+) -> Result<RateLimitStatus, String> {
+    if force.unwrap_or(false) {
+        alerts::forget_cached_limit(&profile_id);
+    }
+
     let config = state
         .config
         .lock()

@@ -48,7 +48,7 @@ function useCachedInvoke<T>(
   const argsRef = useRef(args);
   argsRef.current = args;
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (extraArgs?: Record<string, unknown>) => {
     if (cacheKey === null) {
       setData(fallback);
       setLoading(false);
@@ -56,7 +56,7 @@ function useCachedInvoke<T>(
     }
     setLoading(true);
     try {
-      const result = await invoke<T>(command, argsRef.current);
+      const result = await invoke<T>(command, { ...argsRef.current, ...extraArgs });
       if (shouldCache(result)) cache.set(cacheKey, result);
       setData(result);
     } catch (e) {
@@ -144,7 +144,13 @@ export function useRateLimitStatus(profileId: string | null) {
     null,
     hasLimits,
   );
-  return { status: data, loading, refresh };
+
+  // Opening the popup goes through the shared cache, so reopening it repeatedly
+  // costs nothing. Pressing refresh is an explicit ask and gets through the
+  // backoff a failing provider is under, which is when the button gets pressed.
+  const forceRefresh = useCallback(() => refresh({ force: true }), [refresh]);
+
+  return { status: data, loading, refresh, forceRefresh };
 }
 
 export function useAllUsageStats() {
